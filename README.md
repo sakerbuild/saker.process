@@ -1,5 +1,7 @@
 # saker.process
 
+![Build status](https://img.shields.io/azure-devops/build/sakerbuild/aa80043f-a15f-482b-8868-90b241257a46/18/master)
+
 External process invocation support package for the saker.build system.
 
 ## Build instructions
