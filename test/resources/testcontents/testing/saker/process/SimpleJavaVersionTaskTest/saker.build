@@ -1,0 +1,3 @@
+build(){
+	proc.run([java, -version])
+}
