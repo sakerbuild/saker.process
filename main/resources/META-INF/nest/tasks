@@ -1,1 +1,2 @@
 proc.run=saker.process.main.run.RunProcessTaskFactory
+proc.arg.in.file=saker.process.main.args.InputFileArgumentTaskFactory

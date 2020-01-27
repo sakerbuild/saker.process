@@ -18,8 +18,9 @@ import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.nest.utils.FrontendTaskFactory;
 import saker.process.api.args.ProcessInvocationArgument;
 import saker.process.impl.run.RunProcessWorkerTaskFactory;
-import saker.process.main.run.args.ProcessArgumentTaskOption;
-import saker.process.main.run.args.StringProcessArgumentTaskOption;
+import saker.process.main.args.InvocationProcessArgumentTaskOption;
+import saker.process.main.args.ProcessArgumentTaskOption;
+import saker.process.main.args.StringProcessArgumentTaskOption;
 import saker.sdk.support.api.SDKDescription;
 import saker.sdk.support.api.SDKSupportUtils;
 import saker.sdk.support.main.option.SDKDescriptionTaskOption;
@@ -66,7 +67,7 @@ public class RunProcessTaskFactory extends FrontendTaskFactory<Object> {
 					workingdir = ExecutionFileLocation.create(taskcontext.getTaskWorkingDirectoryPath());
 				} else {
 					FileLocation[] wdirres = { null };
-					workingDirectoryOption.accept(new FileLocationTaskOption.Visitor() {
+					workingDirectoryOption.clone().accept(new FileLocationTaskOption.Visitor() {
 						@Override
 						public void visitRelativePath(SakerPath path) {
 							wdirres[0] = ExecutionFileLocation
@@ -90,6 +91,11 @@ public class RunProcessTaskFactory extends FrontendTaskFactory<Object> {
 						@Override
 						public void visit(StringProcessArgumentTaskOption arg) {
 							arguments.add(ProcessInvocationArgument.createSimpleString(arg.getArgument()));
+						}
+
+						@Override
+						public void visit(InvocationProcessArgumentTaskOption arg) {
+							arguments.add(arg.getArgument());
 						}
 					});
 				}

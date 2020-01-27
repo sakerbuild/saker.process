@@ -1,4 +1,4 @@
-package saker.process.main.run.args;
+package saker.process.main.args;
 
 public class StringProcessArgumentTaskOption extends ProcessArgumentTaskOption {
 	private String argument;
