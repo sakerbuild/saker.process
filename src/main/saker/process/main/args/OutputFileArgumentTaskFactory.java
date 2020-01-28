@@ -7,6 +7,7 @@ import saker.build.task.TaskContext;
 import saker.build.task.utils.annot.SakerInput;
 import saker.nest.utils.FrontendTaskFactory;
 import saker.process.api.args.ProcessInvocationArgument;
+import saker.process.impl.run.OutputBindingProcessInvocationArgument;
 import saker.std.api.file.location.ExecutionFileLocation;
 import saker.std.api.file.location.FileLocation;
 import saker.std.main.file.option.FileLocationTaskOption;
@@ -25,6 +26,9 @@ public class OutputFileArgumentTaskFactory extends FrontendTaskFactory<ProcessIn
 
 			@SakerInput({ "CreateParentDir", "CreateParentDirectory" })
 			public boolean createDirectoriesOption = false;
+
+			@SakerInput({ "BindOutput" })
+			public String bindOutputNameOption;
 
 			@Override
 			public ProcessInvocationArgument run(TaskContext taskcontext) throws Exception {
@@ -45,10 +49,17 @@ public class OutputFileArgumentTaskFactory extends FrontendTaskFactory<ProcessIn
 						resultlocation[0] = location;
 					}
 				});
+				ProcessInvocationArgument result;
 				if (createDirectoriesOption) {
-					return ProcessInvocationArgument.createOutputFileCreateDirectory(resultlocation[0]);
+					result = ProcessInvocationArgument.createOutputFileCreateDirectory(resultlocation[0]);
+				} else {
+					result = ProcessInvocationArgument.createOutputFile(resultlocation[0]);
 				}
-				return ProcessInvocationArgument.createOutputFile(resultlocation[0]);
+				if (bindOutputNameOption != null) {
+					result = new OutputBindingProcessInvocationArgument(result, bindOutputNameOption,
+							resultlocation[0]);
+				}
+				return result;
 			}
 		};
 	}

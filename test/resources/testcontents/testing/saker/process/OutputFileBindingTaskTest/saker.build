@@ -1,0 +1,16 @@
+build(){
+	$run = proc.run([
+		java, 
+		-jar, 
+		proc.arg.in.file(outcp.jar),
+		proc.arg.out.file(
+			std.file.place(outdir/output.txt), 
+			CreateParentDirectory: true,
+			BindOutput: OutFile,
+		),
+	])
+	std.file.copy(
+		Source: $run[Output][OutFile],
+		Target: std.file.place(copydir/copy.txt),
+	)
+}

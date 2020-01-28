@@ -33,6 +33,7 @@ public class JoinProcessInvocationArgument implements ProcessInvocationArgument,
 
 	public JoinProcessInvocationArgument(String prefix, String delimiter, List<ProcessInvocationArgument> args,
 			String suffix) {
+		Objects.requireNonNull(args, "arguments");
 		this.prefix = prefix;
 		this.delimiter = delimiter;
 		this.args = args;

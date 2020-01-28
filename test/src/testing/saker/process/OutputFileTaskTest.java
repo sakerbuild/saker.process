@@ -26,14 +26,14 @@ import testing.saker.nest.util.RepositoryLoadingVariablesMetricEnvironmentTestCa
 @SakerTest
 public class OutputFileTaskTest extends RepositoryLoadingVariablesMetricEnvironmentTestCase {
 	public static class SimpleFileWritingMain {
+		public static final String RUN_OUTPUT_STRING = "SimpleFileWritingMain.main()";
+
 		public static void main(String[] args) throws Exception {
 			Path outpath = Paths.get(args[0]);
 			Files.createDirectories(outpath.getParent());
 			Files.write(outpath, "content".getBytes());
 			
-			System.out.println("SimpleFileWritingMain.main() write to " + outpath);
-			System.out.println(Files.readAllLines(outpath));
-			System.out.println("SimpleFileWritingMain.main()");
+			System.out.println(RUN_OUTPUT_STRING);
 		}
 	}
 

@@ -8,5 +8,4 @@ public interface ProcessResultContext {
 	public int getExitCode();
 
 	public void bindOutput(String name, Object value);
-
 }

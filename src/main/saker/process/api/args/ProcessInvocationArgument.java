@@ -1,6 +1,8 @@
 package saker.process.api.args;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
@@ -8,6 +10,7 @@ import java.util.Objects;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.process.impl.args.InputFileProcessInvocationArgument;
 import saker.process.impl.args.JoinProcessInvocationArgument;
+import saker.process.impl.args.NoExpandProcessInvocationArgument;
 import saker.process.impl.args.OutputFileProcessInvocationArgument;
 import saker.process.impl.args.ParentDirectoryCreateOutputFileProcessInvocationArgument;
 import saker.process.impl.args.SDKPathProcessInvocationArgument;
@@ -52,18 +55,34 @@ public interface ProcessInvocationArgument {
 		return new ParentDirectoryCreateOutputFileProcessInvocationArgument(arg);
 	}
 
+	public static ProcessInvocationArgument createNoExpand(ProcessInvocationArgument arg) throws NullPointerException {
+		if (arg instanceof NoExpandProcessInvocationArgument) {
+			return arg;
+		}
+		return new NoExpandProcessInvocationArgument(arg);
+	}
+
+	public static ProcessInvocationArgument createNoExpand(Collection<? extends ProcessInvocationArgument> args)
+			throws NullPointerException {
+		return new NoExpandProcessInvocationArgument(args);
+	}
+
+	public static ProcessInvocationArgument getVoidArgument() {
+		return new NoExpandProcessInvocationArgument(Collections.emptyList());
+	}
+
 	public static ProcessInvocationArgument createJoined(Iterable<? extends ProcessInvocationArgument> args)
-			throws NullPointerException, IllegalArgumentException {
+			throws NullPointerException {
 		Objects.requireNonNull(args, "arguments");
 		Iterator<? extends ProcessInvocationArgument> it = args.iterator();
 		if (!it.hasNext()) {
-			throw new IllegalArgumentException("Empty arguments.");
+			return getVoidArgument();
 		}
 		List<ProcessInvocationArgument> argslist = new ArrayList<>();
 		do {
 			ProcessInvocationArgument arg = it.next();
 			if (arg == null) {
-				throw new IllegalArgumentException("Null argument.");
+				throw new NullPointerException("Null argument.");
 			}
 			argslist.add(arg);
 		} while (it.hasNext());
@@ -74,8 +93,7 @@ public interface ProcessInvocationArgument {
 	}
 
 	public static ProcessInvocationArgument createJoined(String prefix, String delimiter,
-			Iterable<? extends ProcessInvocationArgument> args, String suffix)
-			throws NullPointerException, IllegalArgumentException {
+			Iterable<? extends ProcessInvocationArgument> args, String suffix) throws NullPointerException {
 		if (ObjectUtils.isNullOrEmpty(prefix) && ObjectUtils.isNullOrEmpty(delimiter)
 				&& ObjectUtils.isNullOrEmpty(suffix)) {
 			return createJoined(args);
@@ -83,13 +101,14 @@ public interface ProcessInvocationArgument {
 		Objects.requireNonNull(args, "arguments");
 		Iterator<? extends ProcessInvocationArgument> it = args.iterator();
 		if (!it.hasNext()) {
-			throw new IllegalArgumentException("Empty arguments.");
+			return new StringProcessInvocationArgument(
+					ObjectUtils.nullDefault(prefix, "") + ObjectUtils.nullDefault(suffix, ""));
 		}
 		List<ProcessInvocationArgument> argslist = new ArrayList<>();
 		do {
 			ProcessInvocationArgument arg = it.next();
 			if (arg == null) {
-				throw new IllegalArgumentException("Null argument.");
+				throw new NullPointerException("Null argument.");
 			}
 			argslist.add(arg);
 		} while (it.hasNext());
