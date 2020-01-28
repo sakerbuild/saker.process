@@ -1,0 +1,8 @@
+build(){
+	proc.run([
+		java, 
+		-jar, 
+		proc.arg.in.file(cp.jar),
+		proc.arg.out.file(std.file.local("{ test.outdir() }/output.txt"), CreateParentDirectory: true),
+	])
+}

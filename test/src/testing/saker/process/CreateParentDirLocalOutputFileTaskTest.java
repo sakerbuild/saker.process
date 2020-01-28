@@ -12,7 +12,7 @@ import testing.saker.nest.util.RepositoryLoadingVariablesMetricEnvironmentTestCa
 import testing.saker.process.OutputFileTaskTest.SimpleFileWritingMain;
 
 @SakerTest
-public class LocalOutputFileTaskTest extends RepositoryLoadingVariablesMetricEnvironmentTestCase {
+public class CreateParentDirLocalOutputFileTaskTest extends RepositoryLoadingVariablesMetricEnvironmentTestCase {
 
 	private Path outputDir;
 
@@ -31,7 +31,6 @@ public class LocalOutputFileTaskTest extends RepositoryLoadingVariablesMetricEnv
 		outputDir = getBuildDirectory().resolve("outdir");
 		Path outpath = outputDir.resolve("output.txt");
 		LocalFileProvider fp = LocalFileProvider.getInstance();
-		fp.createDirectories(outputDir);
 
 		//clear the build directory for a clean test state
 		fp.clearDirectoryRecursively(outputDir);
@@ -53,5 +52,4 @@ public class LocalOutputFileTaskTest extends RepositoryLoadingVariablesMetricEnv
 		runScriptTask("build");
 		assertEquals(fp.getAllBytes(outpath).toString(), "content");
 	}
-
 }
