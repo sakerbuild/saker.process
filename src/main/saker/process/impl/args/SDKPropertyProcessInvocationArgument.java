@@ -9,7 +9,7 @@ import java.util.NavigableMap;
 import java.util.Objects;
 
 import saker.build.thirdparty.saker.util.ImmutableUtils;
-import saker.process.api.args.ProcessArgumentContext;
+import saker.process.api.args.ProcessInitializationContext;
 import saker.process.api.args.ProcessInvocationArgument;
 import saker.sdk.support.api.SDKPropertyReference;
 import saker.sdk.support.api.SDKReference;
@@ -31,7 +31,7 @@ public class SDKPropertyProcessInvocationArgument implements ProcessInvocationAr
 	}
 
 	@Override
-	public List<String> getArguments(ProcessArgumentContext argcontext) throws Exception {
+	public List<String> getArguments(ProcessInitializationContext argcontext) throws Exception {
 		NavigableMap<String, SDKReference> sdks = argcontext.getSDKs();
 		String sdkname = propertyReference.getSDKName();
 		SDKReference sdk = sdks.get(sdkname);

@@ -9,7 +9,7 @@ import java.util.Objects;
 
 import saker.build.file.path.SakerPath;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
-import saker.process.api.args.ProcessArgumentContext;
+import saker.process.api.args.ProcessInitializationContext;
 import saker.process.api.args.ProcessInvocationArgument;
 import saker.sdk.support.api.SDKPathReference;
 import saker.sdk.support.api.SDKReference;
@@ -31,7 +31,7 @@ public class SDKPathProcessInvocationArgument implements ProcessInvocationArgume
 	}
 
 	@Override
-	public List<String> getArguments(ProcessArgumentContext argcontext) throws Exception {
+	public List<String> getArguments(ProcessInitializationContext argcontext) throws Exception {
 		SDKReference sdk = argcontext.getSDKs().get(pathReference.getSDKName());
 		if (sdk == null) {
 			throw new IllegalArgumentException("SDK not found with name: " + pathReference.getSDKName()

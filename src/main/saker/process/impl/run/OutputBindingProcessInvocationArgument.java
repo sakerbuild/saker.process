@@ -6,7 +6,7 @@ import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.util.List;
 
-import saker.process.api.args.ProcessArgumentContext;
+import saker.process.api.args.ProcessInitializationContext;
 import saker.process.api.args.ProcessInvocationArgument;
 import saker.process.api.args.ProcessResultContext;
 import saker.process.api.args.ProcessResultHandler;
@@ -31,7 +31,7 @@ public class OutputBindingProcessInvocationArgument implements ProcessInvocation
 	}
 
 	@Override
-	public List<String> getArguments(ProcessArgumentContext argcontext) throws Exception {
+	public List<String> getArguments(ProcessInitializationContext argcontext) throws Exception {
 		List<String> result = arg.getArguments(argcontext);
 		argcontext.addResultHandler(new ProcessResultHandler() {
 			@Override

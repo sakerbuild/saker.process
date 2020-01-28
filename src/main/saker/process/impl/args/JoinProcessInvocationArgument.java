@@ -9,7 +9,7 @@ import java.util.Objects;
 
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.io.SerialUtils;
-import saker.process.api.args.ProcessArgumentContext;
+import saker.process.api.args.ProcessInitializationContext;
 import saker.process.api.args.ProcessInvocationArgument;
 
 public class JoinProcessInvocationArgument implements ProcessInvocationArgument, Externalizable {
@@ -41,7 +41,7 @@ public class JoinProcessInvocationArgument implements ProcessInvocationArgument,
 	}
 
 	@Override
-	public List<String> getArguments(ProcessArgumentContext argcontext) throws Exception {
+	public List<String> getArguments(ProcessInitializationContext argcontext) throws Exception {
 		StringBuilder sb = new StringBuilder();
 		if (prefix != null) {
 			sb.append(prefix);

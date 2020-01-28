@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.Objects;
 
 import saker.build.thirdparty.saker.util.ImmutableUtils;
-import saker.process.api.args.ProcessArgumentContext;
+import saker.process.api.args.ProcessInitializationContext;
 import saker.process.api.args.ProcessInvocationArgument;
 
 public class StringProcessInvocationArgument implements ProcessInvocationArgument, Externalizable {
@@ -28,7 +28,7 @@ public class StringProcessInvocationArgument implements ProcessInvocationArgumen
 	}
 
 	@Override
-	public List<String> getArguments(ProcessArgumentContext argcontext) {
+	public List<String> getArguments(ProcessInitializationContext argcontext) {
 		return ImmutableUtils.singletonList(argument);
 	}
 

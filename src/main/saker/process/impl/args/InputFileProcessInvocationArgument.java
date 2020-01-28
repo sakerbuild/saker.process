@@ -17,7 +17,7 @@ import saker.build.task.TaskContext;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.util.file.FixedDirectoryVisitPredicate;
-import saker.process.api.args.ProcessArgumentContext;
+import saker.process.api.args.ProcessInitializationContext;
 import saker.process.api.args.ProcessInvocationArgument;
 import saker.std.api.file.location.ExecutionFileLocation;
 import saker.std.api.file.location.FileLocation;
@@ -41,7 +41,7 @@ public class InputFileProcessInvocationArgument implements ProcessInvocationArgu
 	}
 
 	@Override
-	public List<String> getArguments(ProcessArgumentContext argcontext) throws Exception {
+	public List<String> getArguments(ProcessInitializationContext argcontext) throws Exception {
 		String[] result = { null };
 		file.accept(new FileLocationVisitor() {
 			@Override

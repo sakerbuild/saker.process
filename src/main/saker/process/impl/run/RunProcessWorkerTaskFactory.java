@@ -2,8 +2,10 @@ package saker.process.impl.run;
 
 import java.io.Externalizable;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -23,10 +25,16 @@ import saker.build.task.TaskFactory;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
+import saker.build.thirdparty.saker.util.function.ThrowingRunnable;
+import saker.build.thirdparty.saker.util.io.ByteArrayRegion;
 import saker.build.thirdparty.saker.util.io.ByteSink;
 import saker.build.thirdparty.saker.util.io.SerialUtils;
 import saker.build.thirdparty.saker.util.io.StreamUtils;
-import saker.process.api.args.ProcessArgumentContext;
+import saker.build.thirdparty.saker.util.io.UnsyncByteArrayOutputStream;
+import saker.build.thirdparty.saker.util.thread.ExceptionThread;
+import saker.build.thirdparty.saker.util.thread.ThreadUtils;
+import saker.process.api.args.ProcessIOConsumer;
+import saker.process.api.args.ProcessInitializationContext;
 import saker.process.api.args.ProcessInvocationArgument;
 import saker.process.api.args.ProcessResultContext;
 import saker.process.api.args.ProcessResultHandler;
@@ -179,12 +187,60 @@ public class RunProcessWorkerTaskFactory
 		});
 		pb.environment().putAll(environment);
 
-		//TODO handle stdin and stdout better
-		pb.redirectErrorStream(true);
+		ByteSink stdoutsink = taskcontext.getStandardOut();
+		if (argcontext.standardOutputConsumers.isEmpty() && argcontext.standardErrorConsumers.isEmpty()) {
+			pb.redirectErrorStream(true);
+			argcontext.standardOutputConsumers.add(new ProcessIOConsumer() {
+				private UnsyncByteArrayOutputStream buf;
 
+				@Override
+				public void handleOutput(ByteBuffer bytes) throws Exception {
+					if (bytes.hasArray()) {
+						stdoutsink.write(ByteArrayRegion.wrap(bytes.array(), bytes.arrayOffset(), bytes.limit()));
+					} else {
+						if (buf == null) {
+							buf = new UnsyncByteArrayOutputStream(bytes.limit());
+						} else {
+							buf.reset();
+						}
+						buf.write(bytes);
+						buf.writeTo(stdoutsink);
+					}
+				}
+			});
+		}
 		Process proc = pb.start();
-		StreamUtils.copyStream(proc.getInputStream(), ByteSink.toOutputStream(taskcontext.getStandardOut()));
+		InputStream procin = proc.getInputStream();
+		List<ProcessIOConsumer> stdoutconsumers = argcontext.standardOutputConsumers;
+		List<ProcessIOConsumer> stderrconsumers = argcontext.standardErrorConsumers;
+		ExceptionThread errconsumer = null;
+		if (!pb.redirectErrorStream()) {
+			if (stderrconsumers.isEmpty()) {
+				ThreadUtils.startDaemonThread("Proc-stderr-consumer", () -> {
+					try {
+						//XXX could use a common throwaway byte buffer
+						StreamUtils.consumeStream(proc.getErrorStream());
+					} catch (NullPointerException | IOException e) {
+						//ignoreable
+						taskcontext.getTaskUtilities().reportIgnoredException(e);
+					}
+				});
+			} else {
+				errconsumer = new ExceptionThread((ThrowingRunnable) () -> {
+					copyStreamToConsumers(proc.getErrorStream(), stderrconsumers);
+				}, "Proc-stderr-consumer");
+				errconsumer.start();
+			}
+		}
+		copyStreamToConsumers(procin, stdoutconsumers);
+
 		int exitcode = proc.waitFor();
+		if (errconsumer != null) {
+			Throwable exc = errconsumer.joinTakeException();
+			if (exc != null) {
+				throw new RuntimeException("Failed to consumer process standard error stream.", exc);
+			}
+		}
 		ProcessResultContextImpl resultcontext = new ProcessResultContextImpl(taskcontext, exitcode);
 		for (ProcessResultHandler rh : argcontext.resultHandlers) {
 			rh.handleProcessResult(resultcontext);
@@ -194,6 +250,17 @@ public class RunProcessWorkerTaskFactory
 		}
 
 		return new RunProcessTaskOutputImpl(exitcode, resultcontext.outputs);
+	}
+
+	private static void copyStreamToConsumers(InputStream procin, List<ProcessIOConsumer> stdoutconsumers)
+			throws IOException, Exception {
+		byte[] buffer = new byte[1024 * 8];
+		for (int read; (read = procin.read(buffer)) > 0;) {
+			ByteBuffer bbuf = ByteBuffer.wrap(buffer, 0, read);
+			for (ProcessIOConsumer consumer : stdoutconsumers) {
+				consumer.handleOutput(bbuf);
+			}
+		}
 	}
 
 	@Override
@@ -273,10 +340,13 @@ public class RunProcessWorkerTaskFactory
 
 	}
 
-	private final class RunArgumentContextImpl implements ProcessArgumentContext {
+	private final class RunArgumentContextImpl implements ProcessInitializationContext {
 		protected final TaskContext taskcontext;
 		protected final NavigableMap<String, SDKReference> sdkReferences;
 		protected final List<ProcessResultHandler> resultHandlers = new ArrayList<>();
+
+		protected final List<ProcessIOConsumer> standardOutputConsumers = new ArrayList<>();
+		protected final List<ProcessIOConsumer> standardErrorConsumers = new ArrayList<>();
 
 		public RunArgumentContextImpl(TaskContext taskcontext, NavigableMap<String, SDKReference> sdkReferences) {
 			this.taskcontext = taskcontext;
@@ -297,6 +367,18 @@ public class RunProcessWorkerTaskFactory
 		public void addResultHandler(ProcessResultHandler handler) {
 			Objects.requireNonNull(handler, "process result handler");
 			this.resultHandlers.add(handler);
+		}
+
+		@Override
+		public void addStandardOutputConsumer(ProcessIOConsumer consumer) throws NullPointerException {
+			Objects.requireNonNull(consumer, "consumer");
+			this.standardOutputConsumers.add(consumer);
+		}
+
+		@Override
+		public void addStandardErrorConsumer(ProcessIOConsumer consumer) throws NullPointerException {
+			Objects.requireNonNull(consumer, "consumer");
+			this.standardErrorConsumers.add(consumer);
 		}
 	}
 

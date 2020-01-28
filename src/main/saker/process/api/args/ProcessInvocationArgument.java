@@ -22,7 +22,7 @@ import saker.std.api.file.location.FileLocation;
 
 //doc: clients may implement
 public interface ProcessInvocationArgument {
-	public List<String> getArguments(ProcessArgumentContext argcontext) throws Exception;
+	public List<String> getArguments(ProcessInitializationContext argcontext) throws Exception;
 
 	@Override
 	public int hashCode();

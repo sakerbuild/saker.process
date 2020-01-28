@@ -18,7 +18,7 @@ import saker.build.file.path.SakerPath;
 import saker.build.file.provider.LocalFileProvider;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
-import saker.process.api.args.ProcessArgumentContext;
+import saker.process.api.args.ProcessInitializationContext;
 import saker.process.api.args.ProcessInvocationArgument;
 import saker.process.api.args.ProcessResultContext;
 import saker.process.api.args.ProcessResultHandler;
@@ -45,7 +45,7 @@ public class OutputFileProcessInvocationArgument implements ProcessInvocationArg
 	}
 
 	@Override
-	public List<String> getArguments(ProcessArgumentContext argcontext) throws Exception {
+	public List<String> getArguments(ProcessInitializationContext argcontext) throws Exception {
 		String[] result = { null };
 		file.accept(new FileLocationVisitor() {
 			@Override
