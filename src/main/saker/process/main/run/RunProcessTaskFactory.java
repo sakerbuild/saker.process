@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.TreeMap;
+import java.util.Map.Entry;
 
 import saker.build.file.path.SakerPath;
 import saker.build.runtime.execution.ExecutionContext;
@@ -18,8 +19,11 @@ import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.nest.utils.FrontendTaskFactory;
 import saker.process.api.args.ProcessInvocationArgument;
 import saker.process.impl.run.RunProcessWorkerTaskFactory;
+import saker.process.main.args.InputFileProcessArgumentTaskOption;
 import saker.process.main.args.InvocationProcessArgumentTaskOption;
 import saker.process.main.args.ProcessArgumentTaskOption;
+import saker.process.main.args.SDKPathProcessArgumentTaskOption;
+import saker.process.main.args.SDKPropertyProcessArgumentTaskOption;
 import saker.process.main.args.StringProcessArgumentTaskOption;
 import saker.sdk.support.api.SDKDescription;
 import saker.sdk.support.api.SDKSupportUtils;
@@ -56,12 +60,40 @@ public class RunProcessTaskFactory extends FrontendTaskFactory<Object> {
 					return null;
 				}
 				NavigableMap<String, String> env = ImmutableUtils.makeImmutableNavigableMap(environmentOption);
-				NavigableMap<String, SDKDescription> sdkdescriptions = new TreeMap<>(
+				Map<String, SDKDescriptionTaskOption> sdkoptions = new TreeMap<>(
 						SDKSupportUtils.getSDKNameComparator());
 				if (!ObjectUtils.isNullOrEmpty(sdksOption)) {
-					//TODO fill sdks
-					throw new UnsupportedOperationException();
+					for (Entry<String, SDKDescriptionTaskOption> entry : this.sdksOption.entrySet()) {
+						SDKDescriptionTaskOption sdktaskopt = entry.getValue();
+						if (sdktaskopt == null) {
+							continue;
+						}
+						SDKDescriptionTaskOption prev = sdkoptions.putIfAbsent(entry.getKey(), sdktaskopt.clone());
+						if (prev != null) {
+							taskcontext.abortExecution(new IllegalArgumentException(
+									"SDK with name " + entry.getKey() + " defined multiple times."));
+							return null;
+						}
+					}
 				}
+
+				NavigableMap<String, SDKDescription> sdkdescriptions = new TreeMap<>(
+						SDKSupportUtils.getSDKNameComparator());
+
+				for (Entry<String, SDKDescriptionTaskOption> entry : sdkoptions.entrySet()) {
+					SDKDescriptionTaskOption val = entry.getValue();
+					SDKDescription[] desc = { null };
+					if (val != null) {
+						val.accept(new SDKDescriptionTaskOption.Visitor() {
+							@Override
+							public void visit(SDKDescription description) {
+								desc[0] = description;
+							}
+						});
+					}
+					sdkdescriptions.putIfAbsent(entry.getKey(), desc[0]);
+				}
+
 				FileLocation workingdir;
 				if (workingDirectoryOption == null) {
 					workingdir = ExecutionFileLocation.create(taskcontext.getTaskWorkingDirectoryPath());
@@ -96,6 +128,21 @@ public class RunProcessTaskFactory extends FrontendTaskFactory<Object> {
 						@Override
 						public void visit(InvocationProcessArgumentTaskOption arg) {
 							arguments.add(arg.getArgument());
+						}
+
+						@Override
+						public void visit(InputFileProcessArgumentTaskOption arg) {
+							arguments.add(ProcessInvocationArgument.createInputFile(arg.getFile()));
+						}
+
+						@Override
+						public void visit(SDKPathProcessArgumentTaskOption arg) {
+							arguments.add(ProcessInvocationArgument.createSDKPath(arg.getPathReference()));
+						}
+
+						@Override
+						public void visit(SDKPropertyProcessArgumentTaskOption arg) {
+							arguments.add(ProcessInvocationArgument.createSDKProperty(arg.getPropertyReference()));
 						}
 					});
 				}

@@ -1,6 +1,8 @@
 package saker.process.main.args;
 
 import saker.process.api.args.ProcessInvocationArgument;
+import saker.sdk.support.api.SDKPathReference;
+import saker.sdk.support.api.SDKPropertyReference;
 import saker.std.api.file.location.FileLocation;
 
 public abstract class ProcessArgumentTaskOption {
@@ -19,15 +21,13 @@ public abstract class ProcessArgumentTaskOption {
 		return new InputFileProcessArgumentTaskOption(arg);
 	}
 
-	//TODO support these kinds of inputs
-//
-//	public static ProcessArgumentTaskOption valueOf(SDKPathReference arg) {
-//
-//	}
-//
-//	public static ProcessArgumentTaskOption valueOf(SDKPropertyReference arg) {
-//
-//	}
+	public static ProcessArgumentTaskOption valueOf(SDKPathReference arg) {
+		return new SDKPathProcessArgumentTaskOption(arg);
+	}
+
+	public static ProcessArgumentTaskOption valueOf(SDKPropertyReference arg) {
+		return new SDKPropertyProcessArgumentTaskOption(arg);
+	}
 
 	public interface Visitor {
 		public default void visit(StringProcessArgumentTaskOption arg) {
@@ -39,6 +39,14 @@ public abstract class ProcessArgumentTaskOption {
 		}
 
 		public default void visit(InputFileProcessArgumentTaskOption arg) {
+			throw new UnsupportedOperationException("Unsupported process argument kind: " + arg);
+		}
+
+		public default void visit(SDKPathProcessArgumentTaskOption arg) {
+			throw new UnsupportedOperationException("Unsupported process argument kind: " + arg);
+		}
+
+		public default void visit(SDKPropertyProcessArgumentTaskOption arg) {
 			throw new UnsupportedOperationException("Unsupported process argument kind: " + arg);
 		}
 	}
