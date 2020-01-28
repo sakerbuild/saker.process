@@ -9,6 +9,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.NavigableMap;
 import java.util.Objects;
+import java.util.TreeMap;
 
 import saker.build.exception.FileMirroringUnavailableException;
 import saker.build.file.SakerDirectory;
@@ -28,6 +29,7 @@ import saker.process.api.args.ProcessInvocationArgument;
 import saker.process.api.run.RunProcessTaskOutput;
 import saker.process.main.run.RunProcessTaskFactory;
 import saker.sdk.support.api.SDKDescription;
+import saker.sdk.support.api.SDKReference;
 import saker.sdk.support.api.SDKSupportUtils;
 import saker.std.api.file.location.ExecutionFileLocation;
 import saker.std.api.file.location.FileLocation;
@@ -73,7 +75,10 @@ public class RunProcessWorkerTaskFactory
 	public RunProcessTaskOutput run(TaskContext taskcontext) throws Exception {
 		taskcontext.setStandardOutDisplayIdentifier(RunProcessTaskFactory.TASK_NAME);
 
-		ProcessArgumentContext argcontext = new RunArgumentContextImpl(taskcontext);
+		NavigableMap<String, SDKReference> sdkreferences = new TreeMap<>(SDKSupportUtils.getSDKNameComparator());
+		//TODO fill SDK references
+		ProcessArgumentContext argcontext = new RunArgumentContextImpl(taskcontext,
+				ImmutableUtils.makeImmutableNavigableMap(sdkreferences));
 
 		List<String> args = new ArrayList<>(arguments.size());
 		for (ProcessInvocationArgument invocationarg : arguments) {
@@ -145,9 +150,11 @@ public class RunProcessWorkerTaskFactory
 
 	private final class RunArgumentContextImpl implements ProcessArgumentContext {
 		private final TaskContext taskcontext;
+		private final NavigableMap<String, SDKReference> sdkReferences;
 
-		private RunArgumentContextImpl(TaskContext taskcontext) {
+		public RunArgumentContextImpl(TaskContext taskcontext, NavigableMap<String, SDKReference> sdkReferences) {
 			this.taskcontext = taskcontext;
+			this.sdkReferences = sdkReferences;
 		}
 
 		@Override
@@ -156,8 +163,8 @@ public class RunProcessWorkerTaskFactory
 		}
 
 		@Override
-		public NavigableMap<String, SDKDescription> getSDKs() {
-			return sdkDescriptions;
+		public NavigableMap<String, SDKReference> getSDKs() {
+			return sdkReferences;
 		}
 	}
 

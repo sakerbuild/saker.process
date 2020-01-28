@@ -1,16 +1,22 @@
 package saker.process.impl.args;
 
 import java.io.Externalizable;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.util.List;
+import java.util.NavigableMap;
 import java.util.Objects;
 
+import saker.build.file.SakerDirectory;
+import saker.build.file.SakerFile;
+import saker.build.file.path.SakerPath;
+import saker.build.file.provider.SakerPathFiles;
 import saker.build.task.TaskContext;
-import saker.build.task.TaskExecutionUtilities.MirroredFileContents;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
+import saker.build.util.file.FixedDirectoryVisitPredicate;
 import saker.process.api.args.ProcessArgumentContext;
 import saker.process.api.args.ProcessInvocationArgument;
 import saker.std.api.file.location.ExecutionFileLocation;
@@ -40,13 +46,29 @@ public class InputFileProcessInvocationArgument implements ProcessInvocationArgu
 		file.accept(new FileLocationVisitor() {
 			@Override
 			public void visit(ExecutionFileLocation loc) {
-				//TODO support directories
 				TaskContext taskcontext = argcontext.getTaskContext();
+				SakerPath path = loc.getPath();
+				NavigableMap<SakerPath, SakerFile> files = taskcontext.getTaskUtilities()
+						.collectFilesReportInputFileAndAdditionDependency(null,
+								new ProcessInputFileCollectionStrategy(path));
+				if (files.isEmpty()) {
+					throw ObjectUtils.sneakyThrow(new FileNotFoundException("Input file not found: " + path));
+				}
+				SakerFile f = files.get(path);
+				if (f == null) {
+					throw ObjectUtils.sneakyThrow(new FileNotFoundException("Input file not found: " + path));
+				}
 				try {
-					MirroredFileContents filecontents = taskcontext.getTaskUtilities().mirrorFileAtPathContents(loc.getPath());
-					taskcontext.reportInputFileDependency(null, loc.getPath(), filecontents.getContents());
-					result[0]=filecontents.getPath().toString();
-				} catch (NullPointerException | IOException e) {
+					if (f instanceof SakerDirectory) {
+						result[0] = taskcontext
+								.mirror(f,
+										new FixedDirectoryVisitPredicate(
+												SakerPathFiles.relativizeSubPath(files.navigableKeySet(), path)))
+								.toString();
+					} else {
+						result[0] = taskcontext.mirror(f).toString();
+					}
+				} catch (IOException e) {
 					throw ObjectUtils.sneakyThrow(e);
 				}
 			}

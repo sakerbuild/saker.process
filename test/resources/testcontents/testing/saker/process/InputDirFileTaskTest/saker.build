@@ -1,0 +1,3 @@
+build(){
+	proc.run([java, -cp, proc.arg.in.file(cp), EchoClass])
+}
