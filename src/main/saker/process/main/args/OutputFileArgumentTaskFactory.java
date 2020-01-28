@@ -11,26 +11,26 @@ import saker.std.api.file.location.ExecutionFileLocation;
 import saker.std.api.file.location.FileLocation;
 import saker.std.main.file.option.FileLocationTaskOption;
 
-public class InputFileArgumentTaskFactory extends FrontendTaskFactory<ProcessInvocationArgument> {
+public class OutputFileArgumentTaskFactory extends FrontendTaskFactory<ProcessInvocationArgument> {
 	private static final long serialVersionUID = 1L;
 
-	public static final String TASK_NAME = "proc.arg.in.file";
+	public static final String TASK_NAME = "proc.arg.out.file";
 
 	@Override
 	public ParameterizableTask<? extends ProcessInvocationArgument> createTask(ExecutionContext executioncontext) {
 		return new ParameterizableTask<ProcessInvocationArgument>() {
 
-			@SakerInput(value = { "", "File", "Path" }, required = true)
-			public FileLocationTaskOption fileOption;
+			@SakerInput(value = { "", "Output" })
+			public FileLocationTaskOption outputLocationOption;
 
 			@Override
 			public ProcessInvocationArgument run(TaskContext taskcontext) throws Exception {
-				if (fileOption == null) {
-					taskcontext.abortExecution(new IllegalArgumentException("No file specified."));
+				if (outputLocationOption == null) {
+					taskcontext.abortExecution(new IllegalArgumentException("No Output file specified."));
 					return null;
 				}
 				FileLocation[] resultlocation = { null };
-				fileOption.clone().accept(new FileLocationTaskOption.Visitor() {
+				outputLocationOption.clone().accept(new FileLocationTaskOption.Visitor() {
 					@Override
 					public void visitRelativePath(SakerPath path) {
 						resultlocation[0] = ExecutionFileLocation
@@ -42,9 +42,8 @@ public class InputFileArgumentTaskFactory extends FrontendTaskFactory<ProcessInv
 						resultlocation[0] = location;
 					}
 				});
-				return ProcessInvocationArgument.createInputFile(resultlocation[0]);
+				return ProcessInvocationArgument.createOutputFile(resultlocation[0]);
 			}
 		};
 	}
-
 }

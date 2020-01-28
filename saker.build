@@ -214,14 +214,16 @@ test(
 			SakerJarPath: std.file.mirror($instrumentedjar),
 			TimeoutMillis: 120000,
 			TestsBaseBuildDirectory: std.file.mirror.path(std.file.place(test/build)),
+			TestsBaseWorkingDirectory: resources/testcontents,
 		},
 		IgnoreFileChanges: [
 			std.file.place(test/build),
 		],
-		#ProcessJVMArguments: [ "-agentlib:jdwp=transport=dt_socket,address=localhost:5432,server=y,suspend=y,quiet=y" ],
+		#ProcessJVMParameters: [ "-agentlib:jdwp=transport=dt_socket,address=localhost:5432,server=y,suspend=y,quiet=y" ],
 		MaxJVMCount: 1,
 		FailFast: true,
 		AbortOnFail: true,
 		Verbose: true,
+		WorkingDirectory: test/,
 	)
 }

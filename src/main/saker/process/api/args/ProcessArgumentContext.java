@@ -7,6 +7,8 @@ import saker.sdk.support.api.SDKReference;
 
 public interface ProcessArgumentContext {
 	public TaskContext getTaskContext();
-	
+
 	public NavigableMap<String, SDKReference> getSDKs();
+
+	public void addResultHandler(ProcessResultHandler handler) throws NullPointerException;
 }

@@ -27,6 +27,8 @@ import saker.build.thirdparty.saker.util.io.SerialUtils;
 import saker.build.thirdparty.saker.util.io.StreamUtils;
 import saker.process.api.args.ProcessArgumentContext;
 import saker.process.api.args.ProcessInvocationArgument;
+import saker.process.api.args.ProcessResultContext;
+import saker.process.api.args.ProcessResultHandler;
 import saker.process.api.run.RunProcessTaskOutput;
 import saker.process.main.run.RunProcessTaskFactory;
 import saker.sdk.support.api.EnvironmentSDKDescription;
@@ -142,7 +144,7 @@ public class RunProcessWorkerTaskFactory
 				}
 			});
 		}
-		ProcessArgumentContext argcontext = new RunArgumentContextImpl(taskcontext,
+		RunArgumentContextImpl argcontext = new RunArgumentContextImpl(taskcontext,
 				ImmutableUtils.makeImmutableNavigableMap(sdkreferences));
 
 		List<String> args = new ArrayList<>(arguments.size());
@@ -182,7 +184,11 @@ public class RunProcessWorkerTaskFactory
 		Process proc = pb.start();
 		StreamUtils.copyStream(proc.getInputStream(), ByteSink.toOutputStream(taskcontext.getStandardOut()));
 		int exitcode = proc.waitFor();
-		if (exitcode != 0) {
+		ProcessResultContextImpl resultcontext = new ProcessResultContextImpl(taskcontext, exitcode);
+		for (ProcessResultHandler rh : argcontext.resultHandlers) {
+			rh.handleProcessResult(resultcontext);
+		}
+		if (resultcontext.shouldFail) {
 			throw new RuntimeException("Process exited with non-zero exit code: " + exitcode);
 		}
 
@@ -193,6 +199,29 @@ public class RunProcessWorkerTaskFactory
 	@Override
 	public Task<? extends RunProcessTaskOutput> createTask(ExecutionContext executioncontext) {
 		return this;
+	}
+
+	private static final class ProcessResultContextImpl implements ProcessResultContext {
+		private final TaskContext taskContext;
+		private final int exitCode;
+
+		private boolean shouldFail;
+
+		public ProcessResultContextImpl(TaskContext taskContext, int exitCode) {
+			this.taskContext = taskContext;
+			this.exitCode = exitCode;
+			this.shouldFail = exitCode != 0;
+		}
+
+		@Override
+		public TaskContext getTaskContext() {
+			return taskContext;
+		}
+
+		@Override
+		public int getExitCode() {
+			return exitCode;
+		}
 	}
 
 	private static final class RunProcessTaskOutputImpl implements RunProcessTaskOutput, Externalizable {
@@ -214,8 +243,9 @@ public class RunProcessWorkerTaskFactory
 	}
 
 	private final class RunArgumentContextImpl implements ProcessArgumentContext {
-		private final TaskContext taskcontext;
-		private final NavigableMap<String, SDKReference> sdkReferences;
+		protected final TaskContext taskcontext;
+		protected final NavigableMap<String, SDKReference> sdkReferences;
+		protected final List<ProcessResultHandler> resultHandlers = new ArrayList<>();
 
 		public RunArgumentContextImpl(TaskContext taskcontext, NavigableMap<String, SDKReference> sdkReferences) {
 			this.taskcontext = taskcontext;
@@ -230,6 +260,12 @@ public class RunProcessWorkerTaskFactory
 		@Override
 		public NavigableMap<String, SDKReference> getSDKs() {
 			return sdkReferences;
+		}
+
+		@Override
+		public void addResultHandler(ProcessResultHandler handler) {
+			Objects.requireNonNull(handler, "process result handler");
+			this.resultHandlers.add(handler);
 		}
 	}
 
