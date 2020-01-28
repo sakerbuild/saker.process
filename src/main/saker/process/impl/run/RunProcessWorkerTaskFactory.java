@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NavigableMap;
 import java.util.Objects;
+import java.util.Set;
 import java.util.TreeMap;
 
 import saker.build.exception.FileMirroringUnavailableException;
@@ -21,6 +22,7 @@ import saker.build.file.provider.LocalFileProvider;
 import saker.build.runtime.execution.ExecutionContext;
 import saker.build.task.Task;
 import saker.build.task.TaskContext;
+import saker.build.task.TaskExecutionEnvironmentSelector;
 import saker.build.task.TaskFactory;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
@@ -67,6 +69,8 @@ public class RunProcessWorkerTaskFactory
 	private FileLocation workingDirectory;
 	private NavigableMap<String, SDKDescription> sdkDescriptions;
 
+	private transient TaskExecutionEnvironmentSelector clusterExecutionEnvironmentSelector;
+
 	/**
 	 * For {@link Externalizable}.
 	 */
@@ -84,11 +88,16 @@ public class RunProcessWorkerTaskFactory
 		this.environment = environment == null ? Collections.emptyNavigableMap()
 				: ImmutableUtils.makeImmutableNavigableMap(environment);
 		this.workingDirectory = workingDirectory;
-		if (sdkDescriptions == null) {
+		if (ObjectUtils.isNullOrEmpty(sdkDescriptions)) {
 			this.sdkDescriptions = ImmutableUtils.emptyNavigableMap(SDKSupportUtils.getSDKNameComparator());
 		} else {
 			ObjectUtils.requireComparator(sdkDescriptions, SDKSupportUtils.getSDKNameComparator());
 			this.sdkDescriptions = sdkDescriptions;
+
+			//only use clusters is there was at least one SDK defined
+			//XXX support using clusters without any SDK, via a flag or something
+			this.clusterExecutionEnvironmentSelector = SDKSupportUtils
+					.getSDKBasedClusterExecutionEnvironmentSelector(sdkDescriptions.values());
 		}
 	}
 
@@ -96,6 +105,22 @@ public class RunProcessWorkerTaskFactory
 	public int getRequestedComputationTokenCount() {
 		//assume 1 as we're running 1 process
 		return 1;
+	}
+
+	@Override
+	public Set<String> getCapabilities() {
+		if (this.clusterExecutionEnvironmentSelector != null) {
+			return ImmutableUtils.singletonNavigableSet(CAPABILITY_REMOTE_DISPATCHABLE);
+		}
+		return TaskFactory.super.getCapabilities();
+	}
+
+	@Override
+	public TaskExecutionEnvironmentSelector getExecutionEnvironmentSelector() {
+		if (this.clusterExecutionEnvironmentSelector != null) {
+			return this.clusterExecutionEnvironmentSelector;
+		}
+		return TaskFactory.super.getExecutionEnvironmentSelector();
 	}
 
 	@Override
@@ -388,6 +413,7 @@ public class RunProcessWorkerTaskFactory
 		SerialUtils.writeExternalMap(out, environment);
 		out.writeObject(workingDirectory);
 		SerialUtils.writeExternalMap(out, sdkDescriptions);
+		out.writeObject(clusterExecutionEnvironmentSelector);
 	}
 
 	@Override
@@ -397,6 +423,7 @@ public class RunProcessWorkerTaskFactory
 		workingDirectory = (FileLocation) in.readObject();
 		sdkDescriptions = SerialUtils.readExternalSortedImmutableNavigableMap(in,
 				SDKSupportUtils.getSDKNameComparator());
+		clusterExecutionEnvironmentSelector = (TaskExecutionEnvironmentSelector) in.readObject();
 	}
 
 	@Override
