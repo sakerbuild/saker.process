@@ -22,6 +22,7 @@ import saker.process.impl.run.RunProcessWorkerTaskFactory;
 import saker.process.main.args.InputFileProcessArgumentTaskOption;
 import saker.process.main.args.InvocationProcessArgumentTaskOption;
 import saker.process.main.args.ProcessArgumentTaskOption;
+import saker.process.main.args.ProcessArgumentUtils;
 import saker.process.main.args.SDKPathProcessArgumentTaskOption;
 import saker.process.main.args.SDKPropertyProcessArgumentTaskOption;
 import saker.process.main.args.StringProcessArgumentTaskOption;
@@ -114,38 +115,7 @@ public class RunProcessTaskFactory extends FrontendTaskFactory<Object> {
 					workingdir = wdirres[0];
 				}
 
-				List<ProcessInvocationArgument> arguments = new ArrayList<>();
-				for (ProcessArgumentTaskOption cmdtaskoption : commandOption) {
-					if (cmdtaskoption == null) {
-						continue;
-					}
-					cmdtaskoption.accept(new ProcessArgumentTaskOption.Visitor() {
-						@Override
-						public void visit(StringProcessArgumentTaskOption arg) {
-							arguments.add(ProcessInvocationArgument.createSimpleString(arg.getArgument()));
-						}
-
-						@Override
-						public void visit(InvocationProcessArgumentTaskOption arg) {
-							arguments.add(arg.getArgument());
-						}
-
-						@Override
-						public void visit(InputFileProcessArgumentTaskOption arg) {
-							arguments.add(ProcessInvocationArgument.createInputFile(arg.getFile()));
-						}
-
-						@Override
-						public void visit(SDKPathProcessArgumentTaskOption arg) {
-							arguments.add(ProcessInvocationArgument.createSDKPath(arg.getPathReference()));
-						}
-
-						@Override
-						public void visit(SDKPropertyProcessArgumentTaskOption arg) {
-							arguments.add(ProcessInvocationArgument.createSDKProperty(arg.getPropertyReference()));
-						}
-					});
-				}
+				List<ProcessInvocationArgument> arguments = ProcessArgumentUtils.getArguments(commandOption);
 
 				RunProcessWorkerTaskFactory workertask = new RunProcessWorkerTaskFactory(arguments, env, workingdir,
 						sdkdescriptions);

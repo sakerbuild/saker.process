@@ -1,0 +1,23 @@
+build(){
+	proc.run([
+		java, 
+		-jar, 
+		proc.arg.in.file(cp.jar),
+		proc.arg.join([
+			a, b, c
+		])
+	])
+}
+delimited {
+	proc.run([
+		java, 
+		-jar, 
+		proc.arg.in.file(cp.jar),
+		proc.arg.join(
+			[
+				a, b, c
+			], 
+			Delimiter: ";"
+		)
+	])
+}

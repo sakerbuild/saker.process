@@ -6,4 +6,7 @@ public interface ProcessResultContext {
 	public TaskContext getTaskContext();
 
 	public int getExitCode();
+
+	public void bindOutput(String name, Object value);
+
 }

@@ -7,6 +7,7 @@ import java.io.ObjectOutput;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Map.Entry;
 import java.util.NavigableMap;
 import java.util.Objects;
@@ -192,8 +193,7 @@ public class RunProcessWorkerTaskFactory
 			throw new RuntimeException("Process exited with non-zero exit code: " + exitcode);
 		}
 
-		// TODO handle output
-		return new RunProcessTaskOutputImpl();
+		return new RunProcessTaskOutputImpl(exitcode, resultcontext.outputs);
 	}
 
 	@Override
@@ -206,6 +206,7 @@ public class RunProcessWorkerTaskFactory
 		private final int exitCode;
 
 		private boolean shouldFail;
+		protected NavigableMap<String, Object> outputs = new TreeMap<>();
 
 		public ProcessResultContextImpl(TaskContext taskContext, int exitCode) {
 			this.taskContext = taskContext;
@@ -222,10 +223,20 @@ public class RunProcessWorkerTaskFactory
 		public int getExitCode() {
 			return exitCode;
 		}
+
+		@Override
+		public void bindOutput(String name, Object value) {
+			//XXX should warn if an output is overwritten
+			outputs.put(name, value);
+		}
 	}
 
 	private static final class RunProcessTaskOutputImpl implements RunProcessTaskOutput, Externalizable {
 		private static final long serialVersionUID = 1L;
+
+		private int exitCode;
+
+		private Map<String, ?> output;
 
 		/**
 		 * For {@link Externalizable}.
@@ -233,13 +244,33 @@ public class RunProcessWorkerTaskFactory
 		public RunProcessTaskOutputImpl() {
 		}
 
+		public RunProcessTaskOutputImpl(int exitCode, NavigableMap<String, ?> output) {
+			this.exitCode = exitCode;
+			this.output = ImmutableUtils.unmodifiableNavigableMap(output);
+		}
+
+		@Override
+		public int getExitCode() {
+			return exitCode;
+		}
+
+		@Override
+		public Map<String, ?> getOutput() {
+			return output;
+		}
+
 		@Override
 		public void writeExternal(ObjectOutput out) throws IOException {
+			out.writeInt(exitCode);
+			SerialUtils.writeExternalMap(out, output);
 		}
 
 		@Override
 		public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+			exitCode = in.readInt();
+			output = SerialUtils.readExternalSortedImmutableNavigableMap(in);
 		}
+
 	}
 
 	private final class RunArgumentContextImpl implements ProcessArgumentContext {
