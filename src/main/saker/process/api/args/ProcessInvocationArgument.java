@@ -4,6 +4,7 @@ import java.util.List;
 
 import saker.process.impl.args.InputFileProcessInvocationArgument;
 import saker.process.impl.args.OutputFileProcessInvocationArgument;
+import saker.process.impl.args.ParentDirectoryCreateOutputFileProcessInvocationArgument;
 import saker.process.impl.args.SDKPathProcessInvocationArgument;
 import saker.process.impl.args.SDKPropertyProcessInvocationArgument;
 import saker.process.impl.args.StringProcessInvocationArgument;
@@ -39,5 +40,10 @@ public interface ProcessInvocationArgument {
 
 	public static ProcessInvocationArgument createOutputFile(FileLocation arg) throws NullPointerException {
 		return new OutputFileProcessInvocationArgument(arg);
+	}
+
+	public static ProcessInvocationArgument createOutputFileCreateDirectory(FileLocation arg)
+			throws NullPointerException {
+		return new ParentDirectoryCreateOutputFileProcessInvocationArgument(arg);
 	}
 }

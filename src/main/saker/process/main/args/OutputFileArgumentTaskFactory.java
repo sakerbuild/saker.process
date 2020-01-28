@@ -23,6 +23,9 @@ public class OutputFileArgumentTaskFactory extends FrontendTaskFactory<ProcessIn
 			@SakerInput(value = { "", "Output" })
 			public FileLocationTaskOption outputLocationOption;
 
+			@SakerInput({ "CreateParentDir", "CreateParentDirectory" })
+			public boolean createDirectoriesOption = false;
+
 			@Override
 			public ProcessInvocationArgument run(TaskContext taskcontext) throws Exception {
 				if (outputLocationOption == null) {
@@ -42,6 +45,9 @@ public class OutputFileArgumentTaskFactory extends FrontendTaskFactory<ProcessIn
 						resultlocation[0] = location;
 					}
 				});
+				if (createDirectoriesOption) {
+					return ProcessInvocationArgument.createOutputFileCreateDirectory(resultlocation[0]);
+				}
 				return ProcessInvocationArgument.createOutputFile(resultlocation[0]);
 			}
 		};

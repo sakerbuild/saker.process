@@ -10,12 +10,14 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
+import saker.build.file.DirectoryVisitPredicate;
 import saker.build.file.SakerDirectory;
 import saker.build.file.content.ContentDescriptor;
 import saker.build.file.path.ProviderHolderPathKey;
 import saker.build.file.path.SakerPath;
 import saker.build.file.provider.LocalFileProvider;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
+import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.process.api.args.ProcessArgumentContext;
 import saker.process.api.args.ProcessInvocationArgument;
 import saker.process.api.args.ProcessResultContext;
@@ -49,7 +51,19 @@ public class OutputFileProcessInvocationArgument implements ProcessInvocationArg
 			@Override
 			public void visit(ExecutionFileLocation loc) {
 				SakerPath path = loc.getPath();
-				Path mirrorpath = argcontext.getTaskContext().getExecutionContext().toMirrorPath(path);
+				Path mirrorpath;
+				if (shouldCreateParentDirectory()) {
+					SakerDirectory dir = argcontext.getTaskContext().getTaskUtilities()
+							.resolveDirectoryAtAbsolutePathCreate(loc.getPath().getParent());
+					try {
+						mirrorpath = argcontext.getTaskContext().mirror(dir, DirectoryVisitPredicate.nothing())
+								.resolve(path.getFileName());
+					} catch (IOException e) {
+						throw ObjectUtils.sneakyThrow(e);
+					}
+				} else {
+					mirrorpath = argcontext.getTaskContext().getExecutionContext().toMirrorPath(path);
+				}
 				result[0] = mirrorpath.toString();
 				argcontext.addResultHandler(new ProcessResultHandler() {
 					@Override
@@ -75,6 +89,14 @@ public class OutputFileProcessInvocationArgument implements ProcessInvocationArg
 			public void visit(LocalFileLocation loc) {
 				SakerPath localpath = loc.getLocalPath();
 				result[0] = localpath.toString();
+				if (shouldCreateParentDirectory()) {
+					try {
+						LocalFileProvider.getInstance().createDirectories(localpath.getParent());
+						//TODO we should probably invalidate the path and parents
+					} catch (IOException e) {
+						throw ObjectUtils.sneakyThrow(e);
+					}
+				}
 				argcontext.addResultHandler(new ProcessResultHandler() {
 					@Override
 					public void handleProcessResult(ProcessResultContext context) throws Exception {
@@ -87,6 +109,10 @@ public class OutputFileProcessInvocationArgument implements ProcessInvocationArg
 			}
 		});
 		return ImmutableUtils.singletonList(result[0]);
+	}
+
+	protected boolean shouldCreateParentDirectory() {
+		return false;
 	}
 
 	@Override
