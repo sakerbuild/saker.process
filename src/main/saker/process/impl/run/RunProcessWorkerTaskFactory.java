@@ -10,7 +10,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.NavigableMap;
 import java.util.Objects;
 import java.util.Set;
@@ -45,18 +44,9 @@ import saker.process.api.run.RunProcessTaskOutput;
 import saker.process.impl.args.JoinProcessInvocationArgument;
 import saker.process.impl.util.MultiTaskExecutionEnvironmentSelector;
 import saker.process.main.run.RunProcessTaskFactory;
-import saker.sdk.support.api.EnvironmentSDKDescription;
-import saker.sdk.support.api.IndeterminateSDKDescription;
-import saker.sdk.support.api.ResolvedSDKDescription;
 import saker.sdk.support.api.SDKDescription;
-import saker.sdk.support.api.SDKDescriptionVisitor;
 import saker.sdk.support.api.SDKReference;
 import saker.sdk.support.api.SDKSupportUtils;
-import saker.sdk.support.api.UserSDKDescription;
-import saker.std.api.environment.qualifier.AnyEnvironmentQualifier;
-import saker.std.api.environment.qualifier.EnvironmentQualifier;
-import saker.std.api.environment.qualifier.EnvironmentQualifierVisitor;
-import saker.std.api.environment.qualifier.PropertyEnvironmentQualifier;
 import saker.std.api.file.location.ExecutionFileLocation;
 import saker.std.api.file.location.FileLocation;
 import saker.std.api.file.location.FileLocationVisitor;
@@ -142,57 +132,8 @@ public class RunProcessWorkerTaskFactory
 	public RunProcessTaskOutput run(TaskContext taskcontext) throws Exception {
 		taskcontext.setStandardOutDisplayIdentifier(RunProcessTaskFactory.TASK_NAME);
 
-		NavigableMap<String, SDKReference> sdkreferences = new TreeMap<>(SDKSupportUtils.getSDKNameComparator());
-		for (Entry<String, SDKDescription> entry : sdkDescriptions.entrySet()) {
-			entry.getValue().accept(new SDKDescriptionVisitor() {
-				@Override
-				public void visit(ResolvedSDKDescription description) {
-					sdkreferences.put(entry.getKey(), description.getSDKReference());
-				}
-
-				@Override
-				public void visit(EnvironmentSDKDescription description) {
-					SDKReference ref = taskcontext.getTaskUtilities().getReportEnvironmentDependency(
-							SDKSupportUtils.getEnvironmentSDKDescriptionReferenceEnvironmentProperty(description));
-					sdkreferences.put(entry.getKey(), ref);
-				}
-
-				@Override
-				public void visit(IndeterminateSDKDescription description) {
-					SDKDescription basesdk = description.getBaseSDKDescription();
-					Objects.requireNonNull(basesdk, "base sdk description");
-					basesdk.accept(this);
-				}
-
-				@Override
-				public void visit(UserSDKDescription description) {
-					EnvironmentQualifier qualifier = description.getQualifier();
-					if (qualifier != null) {
-						qualifier.accept(new EnvironmentQualifierVisitor() {
-							@Override
-							public void visit(PropertyEnvironmentQualifier qualifier) {
-								Object actual = taskcontext.getTaskUtilities()
-										.getReportEnvironmentDependency(qualifier.getEnvironmentProperty());
-								Object expected = qualifier.getExpectedValue();
-								if (!Objects.equals(actual, expected)) {
-									throw new IllegalArgumentException(
-											"SDK environment qualifier property value mismatch: " + qualifier
-													+ " with actual: " + actual + " and expected: " + expected);
-								}
-							}
-
-							@Override
-							public void visit(AnyEnvironmentQualifier qualifier) {
-								//okay
-							}
-
-						});
-					}
-					sdkreferences.put(entry.getKey(),
-							UserSDKDescription.createSDKReference(description.getPaths(), description.getProperties()));
-				}
-			});
-		}
+		NavigableMap<String, SDKReference> sdkreferences = SDKSupportUtils.resolveSDKReferences(taskcontext,
+				sdkDescriptions);
 		RunArgumentContextImpl argcontext = new RunArgumentContextImpl(taskcontext,
 				ImmutableUtils.makeImmutableNavigableMap(sdkreferences));
 
