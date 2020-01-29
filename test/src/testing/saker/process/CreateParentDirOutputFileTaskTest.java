@@ -9,11 +9,11 @@ import saker.build.file.provider.LocalFileProvider;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import testing.saker.SakerTest;
 import testing.saker.build.tests.EnvironmentTestCaseConfiguration;
-import testing.saker.nest.util.RepositoryLoadingVariablesMetricEnvironmentTestCase;
+import testing.saker.nest.util.NestRepositoryCachingEnvironmentTestCase;
 import testing.saker.process.OutputFileTaskTest.SimpleFileWritingMain;
 
 @SakerTest
-public class CreateParentDirOutputFileTaskTest extends RepositoryLoadingVariablesMetricEnvironmentTestCase {
+public class CreateParentDirOutputFileTaskTest extends NestRepositoryCachingEnvironmentTestCase {
 
 	@Override
 	protected Set<EnvironmentTestCaseConfiguration> getTestConfigurations() {
@@ -24,7 +24,7 @@ public class CreateParentDirOutputFileTaskTest extends RepositoryLoadingVariable
 	}
 
 	@Override
-	protected void runTestImpl() throws Throwable {
+	protected void runNestTaskTestImpl() throws Throwable {
 		runTestForTarget("build");
 		if (!testConfiguration.getClusterNames().isEmpty()) {
 			runTestForTarget("clusterbuild");

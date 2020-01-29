@@ -15,6 +15,7 @@ static(VERSION_saker.nest) = nest.dependency.resolve(
 
 compile(
 	out javac,
+	out procdllpaths,
 ){
 	$resolveddependencies = nest.dependency.resolve(
 		global(DEPENDENCIES_saker.process),
@@ -31,7 +32,47 @@ compile(
 			saker.java.classpath.bundle($resolveddependencies),
 		],
 		Identifier: saker.process,
+		GenerateNativeHeaders: true,
 	)
+	$procdllpaths = include(platform_compile_win, javac: $javac)[procdllpaths]
+}
+platform_compile_win(
+	in javac = include(compile)[javac],
+	out procdllpaths,
+){
+	$procdllpaths = foreach $target in [{ arch: x64, id: amd64 }, { arch: x86, id: x86}]
+		with $ccompile, $clink {
+		$ccompile = saker.msvc.ccompile(
+			[
+				{
+					Files: platform/src/win/**/*.cpp,
+					IncludeDirectories: [
+						sdk.path(java, Identifier: include),
+						sdk.path(java, Identifier: include.platform),
+						$javac[HeaderDirectory],
+					],
+					SimpleParameters: [ 
+						/O2, /GL, /MD 
+					],
+				},
+			],
+			SDKs: {
+				Java: $javac[JavaSDK],
+			},
+			CompilerOptions: [
+				saker.msvc.coptions.preset(dll),
+			],
+			Architecture: $target[arch],
+		)
+		$clink = saker.msvc.clink(
+			$ccompile,
+			LinkerOptions: [
+				saker.msvc.coptions.preset(dll),
+			],
+			SimpleParameters: [ "/OPT:ICF", /LTCG ],
+			Identifier: "NativeProcess.{ $target[id] }",
+		)
+	}: [ $clink[OutputPath]  ]
 }
 export(
 	in compile = include(compile),
@@ -39,6 +80,7 @@ export(
 	out mainjar,
 	out apijar,
 	out impljar,
+	out platformjar,
 	out sourcejar,
 	
 	out bundlepaths = [
@@ -46,6 +88,7 @@ export(
 		$apijar[Path],
 		$impljar[Path],
 		$sourcejar[Path],
+		$platformjar[Path],
 	]
 ) {
 	$mainjar = saker.jar.create(
@@ -108,6 +151,30 @@ export(
 			MainAttributes: {
 				Nest-Bundle-Format-Version: 1,
 				Nest-Bundle-Identifier: "saker.process-impl-v{ global(VERSION_saker.process) }",
+				Nest-Bundle-Source: "saker.process-sources-v{ global(VERSION_saker.process) }",
+			},
+		},
+	)
+	$platformjar = saker.jar.create(
+		Output: saker.process-platform.jar,
+		Resources: [
+			{
+				Directory: $compile[javac][ClassDirectory],
+				Resources: saker/process/platform/**,
+			},
+			{
+				Directory: platform/resources/,
+				Resources: **,
+			},
+			{
+				Files: LICENSE,
+				TargetDirectory: META-INF,
+			},
+		] + $compile[procdllpaths],
+		Manifest: {
+			MainAttributes: {
+				Nest-Bundle-Format-Version: 1,
+				Nest-Bundle-Identifier: "saker.process-platform-v{ global(VERSION_saker.process) }",
 				Nest-Bundle-Source: "saker.process-sources-v{ global(VERSION_saker.process) }",
 			},
 		},

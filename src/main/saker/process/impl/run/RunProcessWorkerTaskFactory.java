@@ -7,7 +7,9 @@ import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -18,7 +20,7 @@ import java.util.TreeMap;
 
 import saker.build.exception.FileMirroringUnavailableException;
 import saker.build.file.SakerDirectory;
-import saker.build.file.provider.LocalFileProvider;
+import saker.build.file.path.SakerPath;
 import saker.build.runtime.execution.ExecutionContext;
 import saker.build.task.AnyTaskExecutionEnvironmentSelector;
 import saker.build.task.Task;
@@ -28,15 +30,13 @@ import saker.build.task.TaskFactory;
 import saker.build.task.identifier.TaskIdentifier;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
-import saker.build.thirdparty.saker.util.function.ThrowingRunnable;
 import saker.build.thirdparty.saker.util.io.ByteArrayRegion;
 import saker.build.thirdparty.saker.util.io.ByteSink;
 import saker.build.thirdparty.saker.util.io.SerialUtils;
-import saker.build.thirdparty.saker.util.io.StreamUtils;
 import saker.build.thirdparty.saker.util.io.UnsyncByteArrayOutputStream;
-import saker.build.thirdparty.saker.util.thread.ExceptionThread;
-import saker.build.thirdparty.saker.util.thread.ThreadUtils;
-import saker.process.api.args.ProcessIOConsumer;
+import saker.process.api.ProcessIOConsumer;
+import saker.process.api.SakerProcess;
+import saker.process.api.SakerProcessBuilder;
 import saker.process.api.args.ProcessInitializationContext;
 import saker.process.api.args.ProcessInvocationArgument;
 import saker.process.api.args.ProcessResultContext;
@@ -145,7 +145,8 @@ public class RunProcessWorkerTaskFactory
 				args.addAll(invocargs);
 			}
 		}
-		ProcessBuilder pb = new ProcessBuilder(args);
+		SakerProcessBuilder pb = SakerProcessBuilder.create();
+		pb.setCommand(args);
 
 		workingDirectory.accept(new FileLocationVisitor() {
 			@Override
@@ -156,7 +157,7 @@ public class RunProcessWorkerTaskFactory
 					throw new RuntimeException("Failed to resolve working directory at: " + loc.getPath());
 				}
 				try {
-					pb.directory(taskcontext.mirror(wdir).toFile());
+					pb.setWorkingDirectory(SakerPath.valueOf(taskcontext.mirror(wdir)));
 				} catch (FileMirroringUnavailableException | NullPointerException | IOException e) {
 					throw new RuntimeException("Failed to mirror working directory: " + loc.getPath(), e);
 				}
@@ -164,11 +165,11 @@ public class RunProcessWorkerTaskFactory
 
 			@Override
 			public void visit(LocalFileLocation loc) {
-				pb.directory(LocalFileProvider.toRealPath(loc.getLocalPath()).toFile());
+				pb.setWorkingDirectory(loc.getLocalPath());
 			}
 		});
 		if (!ObjectUtils.isNullOrEmpty(this.environment)) {
-			Map<String, String> procenv = pb.environment();
+			Map<String, String> procenv = pb.getEnvironment();
 			for (Entry<String, String> entry : this.environment.entrySet()) {
 				if (entry.getValue() == null) {
 					procenv.remove(entry.getKey());
@@ -180,12 +181,12 @@ public class RunProcessWorkerTaskFactory
 
 		ByteSink stdoutsink = taskcontext.getStandardOut();
 		if (argcontext.standardOutputConsumers.isEmpty() && argcontext.standardErrorConsumers.isEmpty()) {
-			pb.redirectErrorStream(true);
+			pb.setMergeStandardError(true);
 			argcontext.standardOutputConsumers.add(new ProcessIOConsumer() {
 				private UnsyncByteArrayOutputStream buf;
 
 				@Override
-				public void handleOutput(ByteBuffer bytes) throws Exception {
+				public void handleOutput(ByteBuffer bytes) throws IOException {
 					if (bytes.hasArray()) {
 						stdoutsink.write(ByteArrayRegion.wrap(bytes.array(), bytes.arrayOffset(), bytes.limit()));
 					} else {
@@ -200,38 +201,13 @@ public class RunProcessWorkerTaskFactory
 				}
 			});
 		}
-		Process proc = pb.start();
-		InputStream procin = proc.getInputStream();
 		List<ProcessIOConsumer> stdoutconsumers = argcontext.standardOutputConsumers;
 		List<ProcessIOConsumer> stderrconsumers = argcontext.standardErrorConsumers;
-		ExceptionThread errconsumer = null;
-		if (!pb.redirectErrorStream()) {
-			if (stderrconsumers.isEmpty()) {
-				ThreadUtils.startDaemonThread("Proc-stderr-consumer", () -> {
-					try {
-						//XXX could use a common throwaway byte buffer
-						StreamUtils.consumeStream(proc.getErrorStream());
-					} catch (NullPointerException | IOException e) {
-						//ignoreable
-						taskcontext.getTaskUtilities().reportIgnoredException(e);
-					}
-				});
-			} else {
-				errconsumer = new ExceptionThread((ThrowingRunnable) () -> {
-					copyStreamToConsumers(proc.getErrorStream(), stderrconsumers);
-				}, "Proc-stderr-consumer");
-				errconsumer.start();
-			}
-		}
-		copyStreamToConsumers(procin, stdoutconsumers);
+		
+		SakerProcess proc = pb.start();
+		proc.processIO(MultiProcessIOConsumer.get(stdoutconsumers), MultiProcessIOConsumer.get(stderrconsumers));
 
 		int exitcode = proc.waitFor();
-		if (errconsumer != null) {
-			Throwable exc = errconsumer.joinTakeException();
-			if (exc != null) {
-				throw new RuntimeException("Failed to consumer process standard error stream.", exc);
-			}
-		}
 		ProcessResultContextImpl resultcontext = new ProcessResultContextImpl(taskcontext, exitcode);
 		for (ProcessResultHandler rh : argcontext.resultHandlers) {
 			rh.handleProcessResult(resultcontext);
@@ -241,6 +217,36 @@ public class RunProcessWorkerTaskFactory
 		}
 
 		return new RunProcessTaskOutputImpl(exitcode, resultcontext.outputs);
+	}
+
+	private static class MultiProcessIOConsumer implements ProcessIOConsumer {
+		private final Iterable<? extends ProcessIOConsumer> consumers;
+
+		public MultiProcessIOConsumer(Collection<? extends ProcessIOConsumer> consumers) {
+			this.consumers = consumers;
+		}
+
+		public static ProcessIOConsumer get(Collection<? extends ProcessIOConsumer> consumers) {
+			if (consumers.isEmpty()) {
+				return null;
+			}
+			if (consumers.size() == 1) {
+				return consumers.iterator().next();
+			}
+			return new MultiProcessIOConsumer(consumers);
+		}
+
+		@Override
+		public void handleOutput(ByteBuffer bytes) throws IOException {
+			for (Iterator<? extends ProcessIOConsumer> it = consumers.iterator(); it.hasNext();) {
+				ProcessIOConsumer c = it.next();
+				c.handleOutput(bytes);
+				if (it.hasNext()) {
+					bytes.rewind();
+				}
+			}
+		}
+
 	}
 
 	private static void copyStreamToConsumers(InputStream procin, List<ProcessIOConsumer> stdoutconsumers)

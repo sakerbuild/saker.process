@@ -10,11 +10,11 @@ import saker.build.thirdparty.saker.util.io.MultiplexOutputStream;
 import saker.build.thirdparty.saker.util.io.UnsyncByteArrayOutputStream;
 import testing.saker.SakerTest;
 import testing.saker.build.tests.EnvironmentTestCaseConfiguration;
-import testing.saker.nest.util.RepositoryLoadingVariablesMetricEnvironmentTestCase;
+import testing.saker.nest.util.NestRepositoryCachingEnvironmentTestCase;
 import testing.saker.process.ProcessTestUtils;
 
 @SakerTest
-public class SimpleClusterProcessTaskTest extends RepositoryLoadingVariablesMetricEnvironmentTestCase {
+public class SimpleClusterProcessTaskTest extends NestRepositoryCachingEnvironmentTestCase {
 	@Override
 	protected Set<EnvironmentTestCaseConfiguration> getTestConfigurations() {
 		return EnvironmentTestCaseConfiguration.builder(super.getTestConfigurations())
@@ -29,7 +29,7 @@ public class SimpleClusterProcessTaskTest extends RepositoryLoadingVariablesMetr
 	}
 
 	@Override
-	protected void runTestImpl() throws Throwable {
+	protected void runNestTaskTestImpl() throws Throwable {
 		files.putFile(PATH_WORKING_DIRECTORY.resolve("cp.jar"),
 				ProcessTestUtils.createJarWithMainAndClassFileBytes(WorkingDirWritingMain.class));
 

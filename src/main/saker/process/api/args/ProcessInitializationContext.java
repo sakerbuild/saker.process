@@ -3,6 +3,7 @@ package saker.process.api.args;
 import java.util.NavigableMap;
 
 import saker.build.task.TaskContext;
+import saker.process.api.ProcessIOConsumer;
 import saker.sdk.support.api.SDKReference;
 
 public interface ProcessInitializationContext {

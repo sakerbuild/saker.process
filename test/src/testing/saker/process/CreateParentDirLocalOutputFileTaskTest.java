@@ -8,11 +8,11 @@ import saker.build.file.provider.LocalFileProvider;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.io.UnsyncByteArrayInputStream;
 import testing.saker.SakerTest;
-import testing.saker.nest.util.RepositoryLoadingVariablesMetricEnvironmentTestCase;
+import testing.saker.nest.util.NestRepositoryCachingEnvironmentTestCase;
 import testing.saker.process.OutputFileTaskTest.SimpleFileWritingMain;
 
 @SakerTest
-public class CreateParentDirLocalOutputFileTaskTest extends RepositoryLoadingVariablesMetricEnvironmentTestCase {
+public class CreateParentDirLocalOutputFileTaskTest extends NestRepositoryCachingEnvironmentTestCase {
 
 	private Path outputDir;
 
@@ -24,7 +24,7 @@ public class CreateParentDirLocalOutputFileTaskTest extends RepositoryLoadingVar
 	}
 
 	@Override
-	protected void runTestImpl() throws Throwable {
+	protected void runNestTaskTestImpl() throws Throwable {
 		files.putFile(PATH_WORKING_DIRECTORY.resolve("cp.jar"),
 				ProcessTestUtils.createJarWithMainAndClassFileBytes(SimpleFileWritingMain.class));
 

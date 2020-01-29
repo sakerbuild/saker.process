@@ -6,10 +6,11 @@ import saker.build.thirdparty.saker.util.io.ByteSink;
 import saker.build.thirdparty.saker.util.io.MultiplexOutputStream;
 import saker.build.thirdparty.saker.util.io.UnsyncByteArrayOutputStream;
 import testing.saker.SakerTest;
-import testing.saker.nest.util.RepositoryLoadingVariablesMetricEnvironmentTestCase;
+import testing.saker.nest.util.NestRepositoryCachingEnvironmentTestCase;
 
 @SakerTest
-public class EnvironmentVariableTest extends RepositoryLoadingVariablesMetricEnvironmentTestCase {
+public class EnvironmentVariableTest extends NestRepositoryCachingEnvironmentTestCase {
+	
 	public static class EnvironmentEchoMain {
 		public static void main(String[] args) {
 			for (Entry<String, String> entry : System.getenv().entrySet()) {
@@ -19,7 +20,7 @@ public class EnvironmentVariableTest extends RepositoryLoadingVariablesMetricEnv
 	}
 
 	@Override
-	protected void runTestImpl() throws Throwable {
+	protected void runNestTaskTestImpl() throws Throwable {
 		files.putFile(PATH_WORKING_DIRECTORY.resolve("cp.jar"),
 				ProcessTestUtils.createJarWithMainAndClassFileBytes(EnvironmentEchoMain.class));
 
