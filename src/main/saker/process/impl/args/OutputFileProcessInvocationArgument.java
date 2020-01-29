@@ -13,9 +13,11 @@ import java.util.UUID;
 import saker.build.file.DirectoryVisitPredicate;
 import saker.build.file.SakerDirectory;
 import saker.build.file.content.ContentDescriptor;
+import saker.build.file.content.DirectoryContentDescriptor;
 import saker.build.file.path.ProviderHolderPathKey;
 import saker.build.file.path.SakerPath;
 import saker.build.file.provider.LocalFileProvider;
+import saker.build.runtime.execution.SakerLog;
 import saker.build.task.TaskExecutionEnvironmentSelector;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
@@ -103,6 +105,10 @@ public class OutputFileProcessInvocationArgument implements ProcessInvocationArg
 					public void handleProcessResult(ProcessResultContext context) throws Exception {
 						ContentDescriptor cd = context.getTaskContext()
 								.invalidateGetContentDescriptor(LocalFileProvider.getInstance().getPathKey(localpath));
+						if (DirectoryContentDescriptor.INSTANCE.equals(cd)) {
+							SakerLog.warning().out(context.getTaskContext()).println(
+									"Output file at path: " + localpath + " is a directory. Expected regular file.");
+						}
 						context.getTaskContext().reportExecutionDependency(
 								new LocalFileContentDescriptorExecutionProperty(UUID.randomUUID(), localpath), cd);
 					}
@@ -114,24 +120,7 @@ public class OutputFileProcessInvocationArgument implements ProcessInvocationArg
 
 	@Override
 	public TaskExecutionEnvironmentSelector getExecutionEnvironmentSelector() {
-		getSuperEnvironmentSelector();
-		TaskExecutionEnvironmentSelector[] result = { null };
-		file.accept(new FileLocationVisitor() {
-			@Override
-			public void visit(ExecutionFileLocation loc) {
-				result[0] = getSuperEnvironmentSelector();
-			}
-
-			@Override
-			public void visit(LocalFileLocation loc) {
-				//stay as null, restrict to local build environment
-			}
-		});
-		return result[0];
-	}
-
-	protected TaskExecutionEnvironmentSelector getSuperEnvironmentSelector() {
-		return ProcessInvocationArgument.super.getExecutionEnvironmentSelector();
+		return InputFileProcessInvocationArgument.getTaskExecutionEnvironmentSelectorForFileLocation(file);
 	}
 
 	protected boolean shouldCreateParentDirectory() {

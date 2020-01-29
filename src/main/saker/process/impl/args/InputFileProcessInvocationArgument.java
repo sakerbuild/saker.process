@@ -16,13 +16,16 @@ import saker.build.file.content.ContentDescriptor;
 import saker.build.file.content.DirectoryContentDescriptor;
 import saker.build.file.path.SakerPath;
 import saker.build.file.provider.SakerPathFiles;
+import saker.build.task.AnyTaskExecutionEnvironmentSelector;
 import saker.build.task.TaskContext;
 import saker.build.task.TaskExecutionEnvironmentSelector;
+import saker.build.task.TaskExecutionUtilities;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.util.file.FixedDirectoryVisitPredicate;
 import saker.process.api.args.ProcessInitializationContext;
 import saker.process.api.args.ProcessInvocationArgument;
+import saker.process.impl.util.LocalDirectoryContentDescriptorExecutionProperty;
 import saker.process.impl.util.LocalFileContentDescriptorExecutionProperty;
 import saker.std.api.file.location.ExecutionFileLocation;
 import saker.std.api.file.location.FileLocation;
@@ -80,16 +83,19 @@ public class InputFileProcessInvocationArgument implements ProcessInvocationArgu
 
 			@Override
 			public void visit(LocalFileLocation loc) {
-				ContentDescriptor cd = argcontext.getTaskContext().getTaskUtilities().getReportExecutionDependency(
-						new LocalFileContentDescriptorExecutionProperty(UUID.randomUUID(), loc.getLocalPath()));
-				result[0] = loc.getLocalPath().toString();
+				TaskExecutionUtilities taskutils = argcontext.getTaskContext().getTaskUtilities();
+				UUID uuidtag = UUID.randomUUID();
+				SakerPath localpath = loc.getLocalPath();
+				ContentDescriptor cd = taskutils.getReportExecutionDependency(
+						new LocalFileContentDescriptorExecutionProperty(uuidtag, localpath));
+				result[0] = localpath.toString();
 				if (!DirectoryContentDescriptor.INSTANCE.equals(cd)) {
 					//the file is a simple file. the dependency is reported, we can finish here
 					return;
 				}
 				//file is a directory
-				// TODO support local directory input
-				throw new UnsupportedOperationException("directory local input is not yet supported");
+				taskutils.getReportExecutionDependency(
+						new LocalDirectoryContentDescriptorExecutionProperty(uuidtag, localpath));
 			}
 		});
 		return ImmutableUtils.singletonList(result[0]);
@@ -97,12 +103,16 @@ public class InputFileProcessInvocationArgument implements ProcessInvocationArgu
 
 	@Override
 	public TaskExecutionEnvironmentSelector getExecutionEnvironmentSelector() {
-		getSuperEnvironmentSelector();
+		return getTaskExecutionEnvironmentSelectorForFileLocation(this.file);
+	}
+
+	public static TaskExecutionEnvironmentSelector getTaskExecutionEnvironmentSelectorForFileLocation(
+			FileLocation file) {
 		TaskExecutionEnvironmentSelector[] result = { null };
 		file.accept(new FileLocationVisitor() {
 			@Override
 			public void visit(ExecutionFileLocation loc) {
-				result[0] = getSuperEnvironmentSelector();
+				result[0] = AnyTaskExecutionEnvironmentSelector.INSTANCE;
 			}
 
 			@Override
@@ -111,10 +121,6 @@ public class InputFileProcessInvocationArgument implements ProcessInvocationArgu
 			}
 		});
 		return result[0];
-	}
-
-	protected TaskExecutionEnvironmentSelector getSuperEnvironmentSelector() {
-		return ProcessInvocationArgument.super.getExecutionEnvironmentSelector();
 	}
 
 	@Override

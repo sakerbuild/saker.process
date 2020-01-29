@@ -14,14 +14,14 @@ import testing.saker.SakerTest;
 import testing.saker.nest.util.RepositoryLoadingVariablesMetricEnvironmentTestCase;
 
 @SakerTest
-public class LocalInputFileTaskTest extends RepositoryLoadingVariablesMetricEnvironmentTestCase {
+public class LocalInputDirFileTaskTest extends RepositoryLoadingVariablesMetricEnvironmentTestCase {
 
-	private Path jarPath;
+	private Path localDir;
 
 	@Override
 	protected Map<String, ?> getTaskVariables() {
 		TreeMap<String, Object> result = ObjectUtils.newTreeMap(super.getTaskVariables());
-		result.put("test.cppath", jarPath.toString());
+		result.put("test.localdir", localDir.toString());
 		return result;
 	}
 
@@ -31,12 +31,13 @@ public class LocalInputFileTaskTest extends RepositoryLoadingVariablesMetricEnvi
 		parameters.setStandardOutput(
 				new MultiplexOutputStream(ByteSink.toOutputStream(parameters.getStandardOutput()), stdout));
 
-		jarPath = getBuildDirectory().resolve("echo.jar");
-		LocalFileProvider.getInstance().createDirectories(jarPath.getParent());
+		localDir = getBuildDirectory().resolve("cp");
+		LocalFileProvider fp = LocalFileProvider.getInstance();
+		fp.createDirectories(localDir);
+		fp.clearDirectoryRecursively(localDir);
 
-		LocalFileProvider.getInstance()
-				.writeToFile(new UnsyncByteArrayInputStream(InputFileTaskTest.genEchoJarBytes("first")), jarPath);
-
+		fp.writeToFile(new UnsyncByteArrayInputStream(InputFileTaskTest.genEchoClassBytes("first")),
+				localDir.resolve("EchoClass.class"));
 		stdout.reset();
 		runScriptTask("build");
 		assertEquals(listOf(stdout.toString().split("\r\n|\r|\n")), listOf("[proc.run]first"));
@@ -45,8 +46,8 @@ public class LocalInputFileTaskTest extends RepositoryLoadingVariablesMetricEnvi
 		runScriptTask("build");
 		assertEmpty(getMetric().getRunTaskIdResults());
 
-		LocalFileProvider.getInstance()
-		.writeToFile(new UnsyncByteArrayInputStream(InputFileTaskTest.genEchoJarBytes("second")), jarPath);
+		fp.writeToFile(new UnsyncByteArrayInputStream(InputFileTaskTest.genEchoClassBytes("second")),
+				localDir.resolve("EchoClass.class"));
 		stdout.reset();
 		runScriptTask("build");
 		assertEquals(listOf(stdout.toString().split("\r\n|\r|\n")), listOf("[proc.run]second"));
