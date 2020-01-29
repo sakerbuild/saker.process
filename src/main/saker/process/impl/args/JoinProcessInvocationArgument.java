@@ -4,13 +4,18 @@ import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
+import saker.build.task.AnyTaskExecutionEnvironmentSelector;
+import saker.build.task.TaskExecutionEnvironmentSelector;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.io.SerialUtils;
 import saker.process.api.args.ProcessInitializationContext;
 import saker.process.api.args.ProcessInvocationArgument;
+import saker.process.impl.util.MultiTaskExecutionEnvironmentSelector;
 
 public class JoinProcessInvocationArgument implements ProcessInvocationArgument, Externalizable {
 	private static final long serialVersionUID = 1L;
@@ -71,6 +76,30 @@ public class JoinProcessInvocationArgument implements ProcessInvocationArgument,
 			sb.append(suffix);
 		}
 		return ImmutableUtils.singletonList(sb.toString());
+	}
+
+	@Override
+	public TaskExecutionEnvironmentSelector getExecutionEnvironmentSelector() {
+		List<ProcessInvocationArgument> arguments = args;
+		return getArgumentsEnvironmentSelector(arguments);
+	}
+
+	public static TaskExecutionEnvironmentSelector getArgumentsEnvironmentSelector(
+			List<? extends ProcessInvocationArgument> arguments) {
+		Set<TaskExecutionEnvironmentSelector> subselectors = new HashSet<>();
+		for (ProcessInvocationArgument a : arguments) {
+			TaskExecutionEnvironmentSelector argselector = a.getExecutionEnvironmentSelector();
+			if (argselector == null) {
+				//only local
+				return null;
+			}
+			if (AnyTaskExecutionEnvironmentSelector.INSTANCE.equals(argselector)) {
+				continue;
+			}
+			subselectors.add(argselector);
+		}
+		//if the selectors are empty,
+		return MultiTaskExecutionEnvironmentSelector.create(subselectors);
 	}
 
 	@Override

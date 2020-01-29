@@ -16,6 +16,7 @@ import saker.build.file.content.ContentDescriptor;
 import saker.build.file.path.ProviderHolderPathKey;
 import saker.build.file.path.SakerPath;
 import saker.build.file.provider.LocalFileProvider;
+import saker.build.task.TaskExecutionEnvironmentSelector;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.process.api.args.ProcessInitializationContext;
@@ -109,6 +110,28 @@ public class OutputFileProcessInvocationArgument implements ProcessInvocationArg
 			}
 		});
 		return ImmutableUtils.singletonList(result[0]);
+	}
+
+	@Override
+	public TaskExecutionEnvironmentSelector getExecutionEnvironmentSelector() {
+		getSuperEnvironmentSelector();
+		TaskExecutionEnvironmentSelector[] result = { null };
+		file.accept(new FileLocationVisitor() {
+			@Override
+			public void visit(ExecutionFileLocation loc) {
+				result[0] = getSuperEnvironmentSelector();
+			}
+
+			@Override
+			public void visit(LocalFileLocation loc) {
+				//stay as null, restrict to local build environment
+			}
+		});
+		return result[0];
+	}
+
+	protected TaskExecutionEnvironmentSelector getSuperEnvironmentSelector() {
+		return ProcessInvocationArgument.super.getExecutionEnvironmentSelector();
 	}
 
 	protected boolean shouldCreateParentDirectory() {

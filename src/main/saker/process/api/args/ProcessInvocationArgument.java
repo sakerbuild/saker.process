@@ -7,6 +7,8 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
 
+import saker.build.task.AnyTaskExecutionEnvironmentSelector;
+import saker.build.task.TaskExecutionEnvironmentSelector;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.process.impl.args.InputFileProcessInvocationArgument;
 import saker.process.impl.args.JoinProcessInvocationArgument;
@@ -23,6 +25,13 @@ import saker.std.api.file.location.FileLocation;
 //doc: clients may implement
 public interface ProcessInvocationArgument {
 	public List<String> getArguments(ProcessInitializationContext argcontext) throws Exception;
+
+	//doc: return null to signal that the argument can only run on the local environment
+	//     no need to override for SDK related selection, that is performed by the runner
+	//     AnyTaskExecutionEnvironmentSelector.INSTANCE is specially handled and can be optimized by the caller
+	public default TaskExecutionEnvironmentSelector getExecutionEnvironmentSelector() {
+		return AnyTaskExecutionEnvironmentSelector.INSTANCE;
+	}
 
 	@Override
 	public int hashCode();

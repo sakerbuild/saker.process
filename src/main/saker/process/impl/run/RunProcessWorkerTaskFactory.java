@@ -20,6 +20,7 @@ import saker.build.exception.FileMirroringUnavailableException;
 import saker.build.file.SakerDirectory;
 import saker.build.file.provider.LocalFileProvider;
 import saker.build.runtime.execution.ExecutionContext;
+import saker.build.task.AnyTaskExecutionEnvironmentSelector;
 import saker.build.task.Task;
 import saker.build.task.TaskContext;
 import saker.build.task.TaskExecutionEnvironmentSelector;
@@ -41,6 +42,8 @@ import saker.process.api.args.ProcessInvocationArgument;
 import saker.process.api.args.ProcessResultContext;
 import saker.process.api.args.ProcessResultHandler;
 import saker.process.api.run.RunProcessTaskOutput;
+import saker.process.impl.args.JoinProcessInvocationArgument;
+import saker.process.impl.util.MultiTaskExecutionEnvironmentSelector;
 import saker.process.main.run.RunProcessTaskFactory;
 import saker.sdk.support.api.EnvironmentSDKDescription;
 import saker.sdk.support.api.IndeterminateSDKDescription;
@@ -64,7 +67,7 @@ public class RunProcessWorkerTaskFactory
 
 	private static final long serialVersionUID = 1L;
 
-	private List<ProcessInvocationArgument> arguments;
+	private List<? extends ProcessInvocationArgument> arguments;
 	private NavigableMap<String, String> environment;
 	private FileLocation workingDirectory;
 	private NavigableMap<String, SDKDescription> sdkDescriptions;
@@ -77,7 +80,7 @@ public class RunProcessWorkerTaskFactory
 	public RunProcessWorkerTaskFactory() {
 	}
 
-	public RunProcessWorkerTaskFactory(List<ProcessInvocationArgument> arguments,
+	public RunProcessWorkerTaskFactory(List<? extends ProcessInvocationArgument> arguments,
 			NavigableMap<String, String> environment, FileLocation workingDirectory,
 			NavigableMap<String, SDKDescription> sdkDescriptions) {
 		Objects.requireNonNull(arguments, "arguments");
@@ -98,6 +101,18 @@ public class RunProcessWorkerTaskFactory
 			//XXX support using clusters without any SDK, via a flag or something
 			this.clusterExecutionEnvironmentSelector = SDKSupportUtils
 					.getSDKBasedClusterExecutionEnvironmentSelector(sdkDescriptions.values());
+			if (this.clusterExecutionEnvironmentSelector != null) {
+				TaskExecutionEnvironmentSelector argsselector = JoinProcessInvocationArgument
+						.getArgumentsEnvironmentSelector(arguments);
+				if (argsselector == null) {
+					this.clusterExecutionEnvironmentSelector = null;
+				} else if (argsselector.equals(AnyTaskExecutionEnvironmentSelector.INSTANCE)) {
+					//cluster selector stays the same
+				} else {
+					this.clusterExecutionEnvironmentSelector = MultiTaskExecutionEnvironmentSelector
+							.create(ObjectUtils.newHashSet(this.clusterExecutionEnvironmentSelector, argsselector));
+				}
+			}
 		}
 	}
 

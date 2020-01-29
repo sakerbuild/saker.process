@@ -8,17 +8,22 @@ import java.io.ObjectOutput;
 import java.util.List;
 import java.util.NavigableMap;
 import java.util.Objects;
+import java.util.UUID;
 
 import saker.build.file.SakerDirectory;
 import saker.build.file.SakerFile;
+import saker.build.file.content.ContentDescriptor;
+import saker.build.file.content.DirectoryContentDescriptor;
 import saker.build.file.path.SakerPath;
 import saker.build.file.provider.SakerPathFiles;
 import saker.build.task.TaskContext;
+import saker.build.task.TaskExecutionEnvironmentSelector;
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.util.file.FixedDirectoryVisitPredicate;
 import saker.process.api.args.ProcessInitializationContext;
 import saker.process.api.args.ProcessInvocationArgument;
+import saker.process.impl.util.LocalFileContentDescriptorExecutionProperty;
 import saker.std.api.file.location.ExecutionFileLocation;
 import saker.std.api.file.location.FileLocation;
 import saker.std.api.file.location.FileLocationVisitor;
@@ -75,11 +80,41 @@ public class InputFileProcessInvocationArgument implements ProcessInvocationArgu
 
 			@Override
 			public void visit(LocalFileLocation loc) {
-				// TODO support local file input
-				FileLocationVisitor.super.visit(loc);
+				ContentDescriptor cd = argcontext.getTaskContext().getTaskUtilities().getReportExecutionDependency(
+						new LocalFileContentDescriptorExecutionProperty(UUID.randomUUID(), loc.getLocalPath()));
+				result[0] = loc.getLocalPath().toString();
+				if (!DirectoryContentDescriptor.INSTANCE.equals(cd)) {
+					//the file is a simple file. the dependency is reported, we can finish here
+					return;
+				}
+				//file is a directory
+				// TODO support local directory input
+				throw new UnsupportedOperationException("directory local input is not yet supported");
 			}
 		});
 		return ImmutableUtils.singletonList(result[0]);
+	}
+
+	@Override
+	public TaskExecutionEnvironmentSelector getExecutionEnvironmentSelector() {
+		getSuperEnvironmentSelector();
+		TaskExecutionEnvironmentSelector[] result = { null };
+		file.accept(new FileLocationVisitor() {
+			@Override
+			public void visit(ExecutionFileLocation loc) {
+				result[0] = getSuperEnvironmentSelector();
+			}
+
+			@Override
+			public void visit(LocalFileLocation loc) {
+				//stay as null, restrict to local build environment
+			}
+		});
+		return result[0];
+	}
+
+	protected TaskExecutionEnvironmentSelector getSuperEnvironmentSelector() {
+		return ProcessInvocationArgument.super.getExecutionEnvironmentSelector();
 	}
 
 	@Override
