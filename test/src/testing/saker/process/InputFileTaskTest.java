@@ -2,6 +2,7 @@ package testing.saker.process;
 
 import java.io.IOException;
 import java.io.PrintStream;
+import java.util.Set;
 import java.util.jar.JarOutputStream;
 import java.util.zip.ZipEntry;
 
@@ -9,33 +10,50 @@ import saker.build.thirdparty.org.objectweb.asm.ClassWriter;
 import saker.build.thirdparty.org.objectweb.asm.MethodVisitor;
 import saker.build.thirdparty.org.objectweb.asm.Opcodes;
 import saker.build.thirdparty.org.objectweb.asm.Type;
+import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.io.ByteSink;
 import saker.build.thirdparty.saker.util.io.MultiplexOutputStream;
 import saker.build.thirdparty.saker.util.io.UnsyncByteArrayOutputStream;
 import testing.saker.SakerTest;
+import testing.saker.build.tests.EnvironmentTestCaseConfiguration;
 import testing.saker.nest.util.RepositoryLoadingVariablesMetricEnvironmentTestCase;
 
 @SakerTest
 public class InputFileTaskTest extends RepositoryLoadingVariablesMetricEnvironmentTestCase {
 
 	@Override
+	protected Set<EnvironmentTestCaseConfiguration> getTestConfigurations() {
+		Set<EnvironmentTestCaseConfiguration> result = ObjectUtils.newHashSet(super.getTestConfigurations());
+		result.addAll(EnvironmentTestCaseConfiguration.builder(super.getTestConfigurations()).addClusterName("cluster1")
+				.addClusterName("cluster2").build());
+		return result;
+	}
+
+	@Override
 	protected void runTestImpl() throws Throwable {
+		runTestForTarget("build");
+		if (!testConfiguration.getClusterNames().isEmpty()) {
+			runTestForTarget("clusterbuild");
+		}
+	}
+
+	private void runTestForTarget(String targetname) throws IOException, Throwable, AssertionError {
+		System.out.println("Test target: " + targetname);
 		UnsyncByteArrayOutputStream stdout = new UnsyncByteArrayOutputStream();
 		parameters.setStandardOutput(
 				new MultiplexOutputStream(ByteSink.toOutputStream(parameters.getStandardOutput()), stdout));
-
 		files.putFile(PATH_WORKING_DIRECTORY.resolve("echo.jar"), genEchoJarBytes("first"));
 		stdout.reset();
-		runScriptTask("build");
+		runScriptTask(targetname);
 		assertEquals(listOf(stdout.toString().split("\r\n|\r|\n")), listOf("[proc.run]first"));
 
 		stdout.reset();
-		runScriptTask("build");
+		runScriptTask(targetname);
 		assertEmpty(getMetric().getRunTaskIdResults());
 
 		files.putFile(PATH_WORKING_DIRECTORY.resolve("echo.jar"), genEchoJarBytes("second"));
 		stdout.reset();
-		runScriptTask("build");
+		runScriptTask(targetname);
 		assertEquals(listOf(stdout.toString().split("\r\n|\r|\n")), listOf("[proc.run]second"));
 	}
 

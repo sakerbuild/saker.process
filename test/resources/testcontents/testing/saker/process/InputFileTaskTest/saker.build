@@ -1,3 +1,27 @@
 build(){
-	proc.run([java, -cp, proc.arg.in.file(echo.jar), EchoClass])
+	proc.run(
+		[
+			java, 
+			-cp, 
+			proc.arg.in.file(echo.jar), 
+			EchoClass
+		]
+	)
+}
+clusterbuild(){
+	proc.run(
+		[
+			java, 
+			-cp, 
+			proc.arg.in.file(echo.jar), 
+			EchoClass
+		],
+		SDKs: {
+			MySDK: sdk.user(
+				EnvironmentQualifier: std.env.qualifier.params({
+					test.cluster.name: cluster1
+				})
+			)
+		}
+	)
 }

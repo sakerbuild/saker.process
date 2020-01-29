@@ -6,3 +6,20 @@ build(){
 		proc.arg.out.file(std.file.place(outdir/output.txt), CreateParentDirectory: true), 
 	])
 }
+clusterbuild(){
+	proc.run(
+		[
+			java, 
+			-jar, 
+			proc.arg.in.file(cp.jar),
+			proc.arg.out.file(std.file.place(outdir/output.txt), CreateParentDirectory: true), 
+		],
+		SDKs: {
+			MySDK: sdk.user(
+				EnvironmentQualifier: std.env.qualifier.params({
+					test.cluster.name: cluster1
+				})
+			)
+		}
+	)
+}
