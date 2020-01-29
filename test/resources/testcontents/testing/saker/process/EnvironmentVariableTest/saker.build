@@ -1,0 +1,12 @@
+build(){
+	proc.run(
+		[
+			java, 
+			-jar,
+			proc.arg.in.file(cp.jar), 
+		],
+		Environment: {
+			MY_ENVIRONMENT: VALUE,
+		}
+	)
+}

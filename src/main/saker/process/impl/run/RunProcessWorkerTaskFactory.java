@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.NavigableMap;
 import java.util.Objects;
 import java.util.Set;
@@ -166,7 +167,16 @@ public class RunProcessWorkerTaskFactory
 				pb.directory(LocalFileProvider.toRealPath(loc.getLocalPath()).toFile());
 			}
 		});
-		pb.environment().putAll(environment);
+		if (!ObjectUtils.isNullOrEmpty(this.environment)) {
+			Map<String, String> procenv = pb.environment();
+			for (Entry<String, String> entry : this.environment.entrySet()) {
+				if (entry.getValue() == null) {
+					procenv.remove(entry.getKey());
+				} else {
+					procenv.put(entry.getKey(), entry.getValue());
+				}
+			}
+		}
 
 		ByteSink stdoutsink = taskcontext.getStandardOut();
 		if (argcontext.standardOutputConsumers.isEmpty() && argcontext.standardErrorConsumers.isEmpty()) {
