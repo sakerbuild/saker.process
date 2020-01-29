@@ -68,6 +68,7 @@ public class LocalDirectoryContentDescriptorExecutionProperty
 				}
 			};
 		} else {
+			//TODO don't use the roots of the file provider
 			files = WildcardPath.getItems(filesOfInterest, ItemLister.forFileProvider(fp, path));
 		}
 		SortedMap<SakerPath, ContentDescriptor> contents = new TreeMap<>();
