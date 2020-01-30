@@ -214,9 +214,40 @@ upload(){
 	)
 }
 
+text_export_testbundle(
+	in procjavac,
+	out jarpath,
+){
+	$javac = saker.java.compile(
+		SourceDirectories: test/testbundle/src,
+		ClassPath: $procjavac,
+		Identifier: saker.process.test.bundle,
+	)
+	$jarpath = saker.jar.create(
+		Output: saker.process.test.bundle.jar,
+		Resources: [
+			{
+				Directory: $javac[ClassDirectory],
+				Resources: **,
+			},
+			{
+				Directory: test/testbundle/resources/,
+				Resources: **,
+			},
+		],
+		Manifest: {
+			MainAttributes: {
+				Nest-Bundle-Format-Version: 1,
+				Nest-Bundle-Identifier: "saker.process.test.bundle-v1",
+			},
+		},
+	)[Path]
+}
+
 test(
 ){
 	$export = include(export)
+	$testbundleexport = include(text_export_testbundle, procjavac: $export[compile][javac])
 	
 	$instrumentedjar = nest.test.instrument(
 		nest.bundle.download("saker.build-test-v{ static(VERSION_saker.build) }")[BundlePaths][0],
@@ -242,6 +273,8 @@ test(
 		global(DEPENDENCIES_saker.process),
 		Filters: nest.dependency.filter.kind(classpath)
 	)
+	
+	$nestrepolocalpath = nest.bundle.localize("saker.nest-test-v{ static(VERSION_saker.nest) }")[BundleLocalPaths][0]
 	
 	$test = saker.java.test(
 		TestRunnerClassPath: [
@@ -269,12 +302,15 @@ test(
 		],
 		TestClassParameters: {
 			**: {
-				RepositoryJarPath: nest.bundle.localize("saker.nest-test-v{ static(VERSION_saker.nest) }")[BundleLocalPaths][0],
+				RepositoryJarPath: $nestrepolocalpath,
 				RepositoryParameterBundles: "{ 
 						foreach $path in $export[bundlepaths]: "{ std.file.mirror($path) };" 
 					};{
 						foreach $path in nest.bundle.localize($resolveddependencies)[BundleLocalPaths]: ";{ $path }"
+					};{ 
+						std.file.mirror($testbundleexport[jarpath]) 
 					}",
+				NestRepositoryJar: $nestrepolocalpath,
 			}
 		},
 		TestInvokerParameters: {
