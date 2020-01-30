@@ -56,12 +56,14 @@ public class Win32NativeProcess extends NativeProcess {
 
 		try {
 			interruptor.start();
-			if (Thread.currentThread().isInterrupted()) {
-				throw new InterruptedIOException();
-			}
 			synchronized (this) {
 				if (nativePtr == 0) {
 					throw new IllegalStateException("closed.");
+				}
+				synchronized (interruptSync) {
+					if (Thread.currentThread().isInterrupted()) {
+						throw new InterruptedIOException("Process IO processing interrupted.");
+					}
 				}
 				try {
 					native_processIO(nativePtr, stdoutprocessor, stdbuffer, stderrprocessor, errbuffer);
@@ -153,12 +155,14 @@ public class Win32NativeProcess extends NativeProcess {
 	private Integer waitForNativeImpl(long millis) throws IOException, InterruptedException {
 		try {
 			interruptor.start();
-			if (Thread.interrupted()) {
-				throw new InterruptedException();
-			}
 			synchronized (this) {
 				if (nativePtr == 0) {
 					throw new IllegalStateException("closed.");
+				}
+				synchronized (interruptSync) {
+					if (Thread.interrupted()) {
+						throw new InterruptedException("Process waiting interrupted.");
+					}
 				}
 				return native_waitFor(nativePtr, millis);
 			}
