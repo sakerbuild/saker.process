@@ -9,18 +9,13 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.spi.AbstractSelectableChannel;
 import java.nio.channels.spi.AbstractSelector;
-import java.util.Map;
-import java.util.Map.Entry;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 import saker.build.file.path.SakerPath;
-import saker.build.file.provider.SakerPathFiles;
 import saker.build.thirdparty.saker.util.io.IOUtils;
 import saker.process.platform.NativeProcess;
 import saker.process.platform.NativeProcessIOConsumer;
-import saker.process.platform.PlatformProcessFactory;
 
 public class Win32NativeProcess extends NativeProcess {
 	private static final int DEFAULT_IO_PROCESSING_DIRECT_BUFFER_SIZE = 1024 * 8;
@@ -45,14 +40,19 @@ public class Win32NativeProcess extends NativeProcess {
 	public void processIO(NativeProcessIOConsumer stdoutprocessor, NativeProcessIOConsumer stderrprocessor)
 			throws IOException, InterruptedIOException {
 		ByteBuffer errbuffer;
-		if (((flags & FLAG_MERGE_STDERR) == FLAG_MERGE_STDERR)) {
+		if (((flags & FLAG_MERGE_STDERR) == FLAG_MERGE_STDERR) || stderrprocessor == null) {
 			errbuffer = null;
 		} else {
 			errbuffer = ByteBuffer.allocateDirect(DEFAULT_IO_PROCESSING_DIRECT_BUFFER_SIZE)
 					.order(ByteOrder.nativeOrder());
 		}
-		ByteBuffer stdbuffer = ByteBuffer.allocateDirect(DEFAULT_IO_PROCESSING_DIRECT_BUFFER_SIZE)
-				.order(ByteOrder.nativeOrder());
+		ByteBuffer stdbuffer;
+		if (stdoutprocessor == null) {
+			stdbuffer = null;
+		} else {
+			stdbuffer = ByteBuffer.allocateDirect(DEFAULT_IO_PROCESSING_DIRECT_BUFFER_SIZE)
+					.order(ByteOrder.nativeOrder());
+		}
 
 		try {
 			interruptor.start();

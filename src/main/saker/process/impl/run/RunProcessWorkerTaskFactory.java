@@ -203,7 +203,7 @@ public class RunProcessWorkerTaskFactory
 		}
 		List<ProcessIOConsumer> stdoutconsumers = argcontext.standardOutputConsumers;
 		List<ProcessIOConsumer> stderrconsumers = argcontext.standardErrorConsumers;
-		
+
 		SakerProcess proc = pb.start();
 		proc.processIO(MultiProcessIOConsumer.get(stdoutconsumers), MultiProcessIOConsumer.get(stderrconsumers));
 

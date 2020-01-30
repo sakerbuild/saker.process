@@ -20,10 +20,6 @@ public class Win32PlatformProcessFactory implements PlatformProcessFactory {
 		if (workingdirectory != null) {
 			SakerPathFiles.requireAbsolutePath(workingdirectory);
 		}
-		if (((flags & NativeProcess.FLAG_MERGE_STDERR) == NativeProcess.FLAG_MERGE_STDERR)) {
-		} else {
-			throw new UnsupportedOperationException("Non-merged std err is not yet supported.");
-		}
 		long event = Win32NativeProcess.native_createInterruptEvent();
 		if (event == 0) {
 			throw new IOException("Failed to create process interruption event.");

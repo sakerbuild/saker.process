@@ -233,6 +233,8 @@ static HANDLE openPipeWrite(const char* pipename) {
 	);
 }
 
+#define FLAG_IS_MERGE_STDERR(flags) ((flags & Java_const_saker_process_platform_NativeProcess_FLAG_MERGE_STDERR) == Java_const_saker_process_platform_NativeProcess_FLAG_MERGE_STDERR)
+
 JNIEXPORT jlong JNICALL Java_saker_process_platform_win32_Win32NativeProcess_native_1startProcess(
 	JNIEnv* env, 
 	jclass clazz, 
@@ -294,7 +296,7 @@ JNIEXPORT jlong JNICALL Java_saker_process_platform_win32_Win32NativeProcess_nat
 	HANDLE stderrpipein = stdoutnamedpipe.handle;
 	HANDLE stderrpipeout = stdoutwritepipe.handle;
 	
-	if ((flags & Java_const_saker_process_platform_NativeProcess_FLAG_MERGE_STDERR) != Java_const_saker_process_platform_NativeProcess_FLAG_MERGE_STDERR) {
+	if (!FLAG_IS_MERGE_STDERR(flags)) {
 		//don't merge standard error
 		*errpipenameid++ = 'e';
 		*errpipenameid++ = 'r';
@@ -381,6 +383,158 @@ JNIEXPORT jlong JNICALL Java_saker_process_platform_win32_Win32NativeProcess_nat
 	return reinterpret_cast<jlong>(proc);
 }
 
+static char THROWAWAY_READ_BUFFER[1024 * 8];
+
+struct PipeHandler {
+	JNIEnv* env;
+	HANDLE* pipeinptr;
+	HANDLE* pipeoutptr;
+	
+	HANDLE pipein;
+	
+	OVERLAPPED overlapped;
+	void* bufaddress;
+	jlong bufcapacity;
+	
+	jobject processor;
+	jobject bytebuffer;
+	
+	boolean init(JNIEnv* env, HANDLE* pipein, HANDLE* pipeout, jobject processor, jobject bytebuffer) {
+		this->env = env;
+		this->pipein = *pipein;
+		this->pipeinptr = pipein;
+		this->pipeoutptr = pipeout;
+		this->processor = processor;
+		this->bytebuffer = bytebuffer;
+		
+		if (bytebuffer != NULL) {
+			bufaddress = env->GetDirectBufferAddress(bytebuffer);
+			if (bufaddress == NULL) {
+				failureType(env, "java/lang/IllegalArgumentException", "GetDirectBufferAddress", NULL);
+				return false;
+			}
+			bufcapacity = env->GetDirectBufferCapacity(bytebuffer);
+			if (bufcapacity <= 0) {
+				failureType(env, "java/lang/IllegalArgumentException", "Illegal buffer capacity", NULL);
+				return false;
+			}
+		} else {
+			if (processor != NULL) {
+				failureType(env, "java/lang/NullPointerException", "null byte buffer", NULL);
+				return false;
+			}
+			//both processor and byte buffer are null
+			//use the throwaway buffer
+			bufaddress = THROWAWAY_READ_BUFFER;
+			bufcapacity = sizeof(THROWAWAY_READ_BUFFER);
+		}
+		eventCloser = CreateEvent(NULL, FALSE, FALSE, NULL);
+		if (eventCloser.handle == NULL) {
+			failure(env, "CreateEvent", GetLastError());
+			return false;
+		}
+		ZeroMemory(&overlapped, sizeof(overlapped));
+		overlapped.hEvent = eventCloser.handle;
+		return true;
+	}
+	
+	bool initRead() {
+		if (ioState == IO_STATE_PENDING) {
+			SetLastError(ERROR_IO_PENDING);
+			return false;
+		}
+		if (ioState == IO_STATE_CANCELLED) {
+			SetLastError(ERROR_INVALID_HANDLE);
+			return false;
+		}
+		BOOL success = ReadFile(pipein, bufaddress, bufcapacity, NULL, &overlapped);
+		if (!success) {
+			//completing asynchronously
+			DWORD lasterror = GetLastError();
+			if (lasterror != ERROR_IO_PENDING) {
+				return false;
+			}
+		}
+		ioState = IO_STATE_PENDING;
+		return true;
+	}
+	
+	bool cancelIO(){
+		if (ioState == IO_STATE_CANCELLED) {
+			return true;
+		}
+		if (!CancelIoEx(pipein, &overlapped)) {
+			return false;
+		}
+		ioState = IO_STATE_CANCELLED;
+		return true;
+	}
+	
+	BOOL getOverlappedIOResult(LPDWORD lpNumberOfBytesTransferred, BOOL bWait){
+		if (ioState == IO_STATE_NONE) {
+			SetLastError(ERROR_INVALID_HANDLE);
+			return FALSE;
+		}
+		if (GetOverlappedResult(pipein, &overlapped, lpNumberOfBytesTransferred, bWait)) {
+			ioState = IO_STATE_NONE;
+			return TRUE;
+		}
+		return FALSE;
+	}
+	
+	void processFinished() {
+		pipeInCloser = *pipeinptr;
+		CloseHandle(*pipeoutptr);
+		
+		*pipeinptr = INVALID_HANDLE_VALUE;
+		*pipeoutptr = INVALID_HANDLE_VALUE;
+	}
+	
+	~PipeHandler() {
+		//wait for the overlapped result before releasing the memory of it
+		//can't really handle the result of the GetOverlappedResult call
+		switch(ioState) {
+			case IO_STATE_CANCELLED:{
+				DWORD read;
+				GetOverlappedResult(pipein, &overlapped, &read, TRUE);
+				break;
+			}
+			case IO_STATE_PENDING: {
+				if (CancelIoEx(pipein, &overlapped)) {
+					DWORD read;
+					GetOverlappedResult(pipein, &overlapped, &read, TRUE);
+					break;
+				}
+				break;
+			}
+		}
+	}
+	
+	bool isIOPending() const {
+		return ioState != IO_STATE_NONE;
+	}
+	
+private:
+	HandleCloser eventCloser;
+	
+	HandleCloser pipeInCloser;
+	
+	static const int IO_STATE_NONE = 0;
+	static const int IO_STATE_PENDING = 1;
+	static const int IO_STATE_CANCELLED = 2;
+	
+	int ioState = IO_STATE_NONE;
+};
+
+static boolean isAnyIOPending(PipeHandler* pipes, int size) {
+	for (int i = 0; i < size; ++i) {
+		if (pipes[i].isIOPending()) {
+			return true;
+		}
+	}
+	return false;
+}
+
 JNIEXPORT void JNICALL Java_saker_process_platform_win32_Win32NativeProcess_native_1processIO(
 	JNIEnv* env, 
 	jclass clazz, 
@@ -402,163 +556,182 @@ JNIEXPORT void JNICALL Java_saker_process_platform_win32_Win32NativeProcess_nati
 		return;
 	}
 	
-	void* stdoutbufaddress = env->GetDirectBufferAddress(stdoutbytedirectbuffer);
-	if (stdoutbufaddress == NULL) {
-		failureType(env, "java/lang/IllegalArgumentException", "GetDirectBufferAddress", NULL);
-		return;
-	}
-	jlong stdoutcapacity = env->GetDirectBufferCapacity(stdoutbytedirectbuffer);
+	int pipecount = 0;
 	
-	OVERLAPPED stdoutoverlapped;
-	ZeroMemory(&stdoutoverlapped, sizeof(stdoutoverlapped));
-	stdoutoverlapped.hEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
-	if (stdoutoverlapped.hEvent == NULL) {
-		failure(env, "CreateEvent", GetLastError());
-		return;
+	PipeHandler pipes[2];
+	if (proc->stdOutPipeIn != INVALID_HANDLE_VALUE) {
+		bool inited = pipes[pipecount++].init(env, &proc->stdOutPipeIn, &proc->stdOutPipeOut, stdoutprocessor, stdoutbytedirectbuffer);
+		if (!inited) {
+			return;
+		}
 	}
-	HandleCloser evh(stdoutoverlapped.hEvent);
+	if (proc->hasStdErrDifferentFromStdOut()) {
+		//non merged std err
+		bool inited = pipes[pipecount++].init(env, &proc->stdErrPipeIn, &proc->stdErrPipeOut, stderrprocessor, stderrbytedirectbuffer);
+		if (!inited) {
+			return;
+		}
+	}
 	
-	int waitcount = 3;
-	HANDLE waits[] = { proc->interruptEvent, proc->procInfo.hProcess, stdoutoverlapped.hEvent, };
+	const int WAITS_OFFSET = 2;
+	DWORD waitcount = WAITS_OFFSET;
+	HANDLE waits[4] = { proc->procInfo.hProcess, proc->interruptEvent,  };
+	for (int i = 0; i < pipecount; ++i) {
+		if (!pipes[i].initRead()) {
+			failure(env, "ReadFile", GetLastError());
+			return;
+		}
+		waits[waitcount++] = pipes[i].overlapped.hEvent;
+	}
 	
 	bool interrupted = false;
 	while (true) {
-		BOOL success = ReadFile(proc->stdOutPipeIn, stdoutbufaddress, stdoutcapacity, NULL, &stdoutoverlapped);
-		if (!success) {
-			DWORD lasterror = GetLastError();
-			if (lasterror != ERROR_IO_PENDING) {
-				failure(env, "ReadFile", lasterror);
+		DWORD waitres = WaitForMultipleObjects(waitcount, waits, FALSE, INFINITE);
+		switch(waitres) {
+			case WAIT_OBJECT_0: {
+				//process finished
+				
+				for (int i = 0; i < pipecount; ++i) {
+					PipeHandler& pipe = pipes[i];
+					pipe.processFinished();
+					
+					DWORD read = 0;
+					if (!pipe.getOverlappedIOResult(&read, TRUE)) {
+						DWORD lasterror = GetLastError();
+						if (lasterror != ERROR_BROKEN_PIPE){
+							failure(env, "GetOverlappedResult", lasterror);
+							return;
+						}
+					} else {
+						if(read > 0) {
+							if (pipe.processor != NULL){
+								env->CallStaticVoidMethod(clazz, outputnotifymethod, pipe.bytebuffer, read, pipe.processor);
+								if (env->ExceptionCheck()) {
+									return;
+								}
+							}
+							while (ReadFile(pipe.pipein, pipe.bufaddress, pipe.bufcapacity, &read, NULL)) {
+								if (read <= 0){
+									break;
+								}
+								
+								if (pipe.processor != NULL){
+									env->CallStaticVoidMethod(clazz, outputnotifymethod, pipe.bytebuffer, read, pipe.processor);
+									if (env->ExceptionCheck()) {
+										return;
+									}
+								}
+							}
+						}
+					}
+				}
 				return;
 			}
-		}
-		
-		DWORD waitres = WaitForMultipleObjects(waitcount, waits, FALSE, INFINITE);
-		if (waitres >= WAIT_OBJECT_0 && waitres < WAIT_OBJECT_0 + waitcount) {
-			//something was signaled
-			switch(waitres) {
-				case WAIT_OBJECT_0: {
-					//interrupted
-					{
-						jclass threadc = env->FindClass("java/lang/Thread");
-						jmethodID interruptedmethod = env->GetStaticMethodID(threadc, "interrupted", "()Z");
-						if (!env->CallStaticBooleanMethod(threadc, interruptedmethod)) {
-							//false alarm? continue the loop
-							continue;
-						}
-						//no longer needed
-						env->DeleteLocalRef(threadc);
+			case WAIT_OBJECT_0 + 1: {
+				//interrupted
+				{
+					jclass threadc = env->FindClass("java/lang/Thread");
+					jmethodID interruptedmethod = env->GetStaticMethodID(threadc, "interrupted", "()Z");
+					if (!env->CallStaticBooleanMethod(threadc, interruptedmethod)) {
+						//false alarm? continue the loop
+						continue;
 					}
-					//we've been interrupted. cancel any pending IO, check process exit, and if we're not finished,
-					//throw the interrupted exception
-					if (!CancelIoEx(proc->stdOutPipeIn, &stdoutoverlapped)) {
+					//no longer needed
+					env->DeleteLocalRef(threadc);
+				}
+				bool hadcancelfail = false;
+				//we've been interrupted. cancel any pending IO, check process exit, and if we're not finished,
+				//throw the interrupted exception
+				for (int i = 0; i < pipecount; ++i) {
+					PipeHandler& pipe = pipes[i];
+					if (!pipe.isIOPending()) {
+						continue;
+					}
+					if (!pipe.cancelIO()) {
 						//failed to cancel the IO.
 						//do not take the interrupt request into account
 						//do not reinterrupt, as we would get into a loop
 						//set internal interrupted flag so we can handle when the IO completes
 						interrupted = true;
-						continue;
+						hadcancelfail = true;
+						continue;	
 					}
-					//try getting the result without waiting
+					//IO cancellation succeeded
+					//wait for the overlapped request to complete as we may not free it before returning 
 					DWORD read = 0;
-					if (!GetOverlappedResult(proc->stdOutPipeIn, &stdoutoverlapped, &read, TRUE)) {
-						//failed to wait for the overlapped result
+					if (!pipe.getOverlappedIOResult(&read, TRUE)) {
 						DWORD lasterror = GetLastError();
 						if(lasterror == ERROR_OPERATION_ABORTED){
-							//cancelled
-							//XXX can there be any bytes in the buffer that we need to process?
-						} else {
-							if(lasterror == ERROR_IO_PENDING) {
-								//shouldn't really happen, check anyway
-								//we can't throw the exception, continue the loop
-								interrupted = true;
-								continue;
-							}
-							//unrecognized error
-							failure(env, "GetOverlappedResult", lasterror);
-							return;
+							//the request was cancelled properly, without any read bytes
+							continue;
 						}
-					} else {
-						if (read > 0) {
-							//handle read bytes
-							env->CallStaticVoidMethod(clazz, outputnotifymethod, stdoutbytedirectbuffer, read, stdoutprocessor);
-							if (env->ExceptionCheck()) {
-								return;
-							}
+						if (lasterror == ERROR_IO_PENDING) {
+							//shouldn't really happen, check anyway
+							//we can't throw the exception, continue the loop
+							interrupted = true;
+							hadcancelfail = true;
+							continue;
 						}
+						//unrecognized error
+						failure(env, "GetOverlappedResult", lasterror);
+						return;
 					}
-					
-					interruptException(env, "Process IO processing interrupted.");
-					return;
-				}
-				case WAIT_OBJECT_0 + 1: {
-					//process finished
-					
-					HandleCloser inh(proc->stdOutPipeIn);
-					proc->stdOutPipeIn = INVALID_HANDLE_VALUE;
-					
-					CloseHandle(proc->stdOutPipeOut);
-					proc->stdOutPipeOut = INVALID_HANDLE_VALUE;
-					
-					DWORD read = 0;
-					if (!GetOverlappedResult(inh.handle, &stdoutoverlapped, &read, TRUE)) {
-						DWORD lasterror = GetLastError();
-						if(lasterror != ERROR_BROKEN_PIPE){
-							failure(env, "GetOverlappedResult", lasterror);
-							return;
-						}
-					} else if(read > 0) {
-						env->CallStaticVoidMethod(clazz, outputnotifymethod, stdoutbytedirectbuffer, read, stdoutprocessor);
+					if (read > 0 && pipe.processor != NULL){
+						env->CallStaticVoidMethod(clazz, outputnotifymethod, pipe.bytebuffer, read, pipe.processor);
 						if (env->ExceptionCheck()) {
 							return;
 						}
-						
-						while (ReadFile(inh.handle, stdoutbufaddress, stdoutcapacity, &read, NULL)) {
-							if(read <= 0){
-								break;
-							}
-							
-							env->CallStaticVoidMethod(clazz, outputnotifymethod, stdoutbytedirectbuffer, read, stdoutprocessor);
-							if (env->ExceptionCheck()) {
-								return;
-							}
-						}
 					}
-					return;
 				}
-				case WAIT_OBJECT_0 + 2: {
-					//read finished
-					DWORD read;
-					if(!GetOverlappedResult(proc->stdOutPipeIn, &stdoutoverlapped, &read, FALSE)){
+				if (hadcancelfail) {
+					continue;
+				}
+				interruptException(env, "Process IO processing interrupted.");
+				return;
+			}
+			
+			default: {
+				if (waitres >= WAIT_OBJECT_0 + WAITS_OFFSET && waitres < WAIT_OBJECT_0 + WAITS_OFFSET + pipecount) {
+					//a pipe was notified, a read finished
+					PipeHandler& pipe = pipes[waitres - (WAIT_OBJECT_0 + WAITS_OFFSET)];
+					DWORD read = 0;
+					if (!pipe.getOverlappedIOResult(&read, FALSE)) {
 						failure(env, "GetOverlappedResult", GetLastError());
 						return;
 					}
-					if(read > 0){
-						env->CallStaticVoidMethod(clazz, outputnotifymethod, stdoutbytedirectbuffer, read, stdoutprocessor);
+					
+					if (read > 0 && pipe.processor != NULL) {
+						env->CallStaticVoidMethod(clazz, outputnotifymethod, pipe.bytebuffer, read, pipe.processor);
 						if (env->ExceptionCheck()) {
 							return;
 						}
 					}
+					
 					if (interrupted) {
-						//interrupted meanwhile, throw it, dont restart IO
-						interruptException(env, "Process IO processing interrupted.");
+						//interrupted meanwhile, dont restart IO
+						if (!isAnyIOPending(pipes, pipecount)) {
+							//exit the loop if there are no IO pending
+							interruptException(env, "Process IO processing interrupted.");
+							return;
+						}
+						//there is at least one IO pending, wait for it, don't restart
+						break;
+					}
+					
+					//restart read
+					if (!pipe.initRead()) {
+						failure(env, "ReadFile", GetLastError());
 						return;
 					}
-					//read is restarted next loop
-					break;
-				}
-				
-				default: {
-					failure(env, "WaitForMultipleObjects", GetLastError());
+				} else {
+					//unknown wait result
+					failure(env, "WaitForMultipleObjects", waitres);
 					return;
 				}
+				break;
 			}
-		} else {
-			//waiting failure
-			failure(env, "WaitForMultipleObjects", GetLastError());
-			return;
 		}
 	}
-	
 }
 
 static jobject createJavaLangInteger(JNIEnv* env, DWORD val) {
