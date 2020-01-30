@@ -2,6 +2,7 @@ package testing.saker.process;
 
 import saker.build.runtime.repository.SakerRepository;
 import testing.saker.SakerTest;
+import testing.saker.process.util.MainActionTestCase;
 
 @SakerTest
 public class StdOutAndErrMainActionTest extends MainActionTestCase {

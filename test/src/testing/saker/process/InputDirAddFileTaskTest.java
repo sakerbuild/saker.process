@@ -12,10 +12,10 @@ import saker.build.thirdparty.saker.util.io.ByteSink;
 import saker.build.thirdparty.saker.util.io.MultiplexOutputStream;
 import saker.build.thirdparty.saker.util.io.UnsyncByteArrayOutputStream;
 import testing.saker.SakerTest;
-import testing.saker.nest.util.NestRepositoryCachingEnvironmentTestCase;
+import testing.saker.process.util.ProcessTestUtils;
 
 @SakerTest
-public class InputDirAddFileTaskTest extends NestRepositoryCachingEnvironmentTestCase {
+public class InputDirAddFileTaskTest extends SakerProcessTestCase {
 
 	public static class TestMain {
 		public static void main(String[] args) throws Exception {
@@ -28,7 +28,7 @@ public class InputDirAddFileTaskTest extends NestRepositoryCachingEnvironmentTes
 	}
 
 	@Override
-	protected void runNestTaskTestImpl() throws Throwable {
+	protected void runProcessTestImpl() throws Throwable {
 		SakerPath dirpath = PATH_WORKING_DIRECTORY.resolve("dir");
 
 		files.putFile(PATH_WORKING_DIRECTORY.resolve("cp.jar"),

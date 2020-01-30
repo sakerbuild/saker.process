@@ -1,4 +1,4 @@
-package testing.saker.process;
+package testing.saker.process.util;
 
 import java.nio.file.Path;
 import java.util.LinkedHashSet;
@@ -16,6 +16,7 @@ import saker.build.runtime.repository.SakerRepositoryFactory;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import testing.saker.SakerTestCase;
 import testing.saker.build.tests.EnvironmentTestCase;
+import testing.saker.nest.TestFlag;
 import testing.saker.nest.util.NestIntegrationTestUtils;
 
 public abstract class MainActionTestCase extends SakerTestCase {
@@ -24,6 +25,10 @@ public abstract class MainActionTestCase extends SakerTestCase {
 
 	@Override
 	public void runTest(Map<String, String> parameters) throws Throwable {
+		Path nativelibbasepath = EnvironmentTestCase.getTestingBaseBuildDirectory().resolve(getClass().getSimpleName());
+		LibraryPathOverridingNestMetric metric = new LibraryPathOverridingNestMetric(nativelibbasepath);
+		TestFlag.set(metric);
+
 		this.parameters = parameters;
 
 		parameterBundlesString = createParameterBundlesString(parameters);
@@ -42,6 +47,8 @@ public abstract class MainActionTestCase extends SakerTestCase {
 				runTestOnRepo(repo);
 			}
 		}
+		//to prevent gc
+		System.out.println(metric);
 	}
 
 	private static String createParameterBundlesString(Map<String, String> parameters) {

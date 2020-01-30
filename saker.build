@@ -217,6 +217,7 @@ upload(){
 text_export_testbundle(
 	in procjavac,
 	out jarpath,
+	out javac,
 ){
 	$javac = saker.java.compile(
 		SourceDirectories: test/testbundle/src,
@@ -285,6 +286,7 @@ test(
 		],
 		DependencyClassPath: [
 			$export[compile][javac],
+			$testbundleexport[javac],
 		],
 		TestInvokerClass: testing.saker.SakerJavaTestingInvoker,
 		TestClassPath:	[

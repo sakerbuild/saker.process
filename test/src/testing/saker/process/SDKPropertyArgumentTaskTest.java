@@ -4,10 +4,10 @@ import saker.build.thirdparty.saker.util.io.ByteSink;
 import saker.build.thirdparty.saker.util.io.MultiplexOutputStream;
 import saker.build.thirdparty.saker.util.io.UnsyncByteArrayOutputStream;
 import testing.saker.SakerTest;
-import testing.saker.nest.util.NestRepositoryCachingEnvironmentTestCase;
+import testing.saker.process.util.ProcessTestUtils;
 
 @SakerTest
-public class SDKPropertyArgumentTaskTest extends NestRepositoryCachingEnvironmentTestCase {
+public class SDKPropertyArgumentTaskTest extends SakerProcessTestCase {
 	public static class TestMain {
 		public static void main(String[] args) throws Exception {
 			System.out.println(args[0]);
@@ -15,7 +15,7 @@ public class SDKPropertyArgumentTaskTest extends NestRepositoryCachingEnvironmen
 	}
 
 	@Override
-	protected void runNestTaskTestImpl() throws Throwable {
+	protected void runProcessTestImpl() throws Throwable {
 		files.putFile(PATH_WORKING_DIRECTORY.resolve("cp.jar"),
 				ProcessTestUtils.createJarWithMainAndClassFileBytes(TestMain.class));
 		

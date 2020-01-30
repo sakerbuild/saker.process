@@ -7,13 +7,12 @@ import saker.build.thirdparty.saker.util.io.MultiplexOutputStream;
 import saker.build.thirdparty.saker.util.io.StreamUtils;
 import saker.build.thirdparty.saker.util.io.UnsyncByteArrayOutputStream;
 import testing.saker.SakerTest;
-import testing.saker.nest.util.NestRepositoryCachingEnvironmentTestCase;
 
 @SakerTest
-public class SimpleJavaVersionTaskTest extends NestRepositoryCachingEnvironmentTestCase {
+public class SimpleJavaVersionTaskTest extends SakerProcessTestCase {
 
 	@Override
-	protected void runNestTaskTestImpl() throws Throwable {
+	protected void runProcessTestImpl() throws Throwable {
 		UnsyncByteArrayOutputStream taskout = new UnsyncByteArrayOutputStream();
 
 		parameters.setStandardOutput(

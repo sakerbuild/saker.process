@@ -11,10 +11,9 @@ import saker.build.thirdparty.saker.util.io.MultiplexOutputStream;
 import saker.build.thirdparty.saker.util.io.UnsyncByteArrayInputStream;
 import saker.build.thirdparty.saker.util.io.UnsyncByteArrayOutputStream;
 import testing.saker.SakerTest;
-import testing.saker.nest.util.NestRepositoryCachingEnvironmentTestCase;
 
 @SakerTest
-public class LocalInputFileTaskTest extends NestRepositoryCachingEnvironmentTestCase {
+public class LocalInputFileTaskTest extends SakerProcessTestCase {
 
 	private Path jarPath;
 
@@ -26,7 +25,7 @@ public class LocalInputFileTaskTest extends NestRepositoryCachingEnvironmentTest
 	}
 
 	@Override
-	protected void runNestTaskTestImpl() throws Throwable {
+	protected void runProcessTestImpl() throws Throwable {
 		UnsyncByteArrayOutputStream stdout = new UnsyncByteArrayOutputStream();
 		parameters.setStandardOutput(
 				new MultiplexOutputStream(ByteSink.toOutputStream(parameters.getStandardOutput()), stdout));
