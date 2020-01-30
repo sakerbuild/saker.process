@@ -150,6 +150,12 @@ public:
 	HANDLE interruptEvent;
 	jint flags;
 	
+	jobject standardOutputConsumer; 
+	jobject standardErrorConsumer;
+	
+	HANDLE stdOutFile = INVALID_HANDLE_VALUE;
+	HANDLE stdErrFile = INVALID_HANDLE_VALUE;
+	
 	NativeProcess(
 			const PROCESS_INFORMATION& pi, 
 			const STARTUPINFOW& si, 
@@ -158,7 +164,9 @@ public:
 			HANDLE stderrpipein, 
 			HANDLE stderrpipeout,
 			jint flags,
-			HANDLE interruptevent)
+			HANDLE interruptevent,
+			jobject standardOutputConsumer,
+			jobject standardErrorConsumer)
 		: 
 			procInfo(pi), 
 			startupInfo(si),
@@ -167,7 +175,9 @@ public:
 			stdErrPipeIn(stderrpipein),
 			stdErrPipeOut(stderrpipeout),
 			interruptEvent(interruptevent),
-			flags(flags) {
+			flags(flags),
+			standardOutputConsumer(standardOutputConsumer),
+			standardErrorConsumer(standardErrorConsumer) {
 	}
 	
 	bool hasStdOut() const {
@@ -201,7 +211,6 @@ struct HandleCloser {
 	}
 };
 
-
 #define PIPE_NAME_PREFIX "\\\\.\\pipe\\"
 
 static HANDLE createNamedPipeWithName(const char* pipename) {
@@ -234,8 +243,6 @@ static HANDLE openPipeWrite(const char* pipename) {
 }
 
 #define FLAG_IS_MERGE_STDERR(flags) ((flags & Java_const_saker_process_platform_NativeProcess_FLAG_MERGE_STDERR) == Java_const_saker_process_platform_NativeProcess_FLAG_MERGE_STDERR)
-#define FLAG_IS_NULL_STDOUT(flags) ((flags & Java_const_saker_process_platform_NativeProcess_FLAG_NULL_STDOUT) == Java_const_saker_process_platform_NativeProcess_FLAG_NULL_STDOUT)
-#define FLAG_IS_NULL_STDERR(flags) ((flags & Java_const_saker_process_platform_NativeProcess_FLAG_NULL_STDERR) == Java_const_saker_process_platform_NativeProcess_FLAG_NULL_STDERR)
 
 JNIEXPORT jlong JNICALL Java_saker_process_platform_win32_Win32NativeProcess_native_1startProcess(
 	JNIEnv* env, 
@@ -246,7 +253,11 @@ JNIEXPORT jlong JNICALL Java_saker_process_platform_win32_Win32NativeProcess_nat
 	jint flags, 
 	jstring pipeid,
 	jlong interrupteventptr,
-	jstring envstr
+	jstring envstr,
+	jobject standardOutputConsumer, 
+	jobject standardErrorConsumer, 
+	jstring stdoutfilepath, 
+	jstring stderrfilepath
 ) {
 	PROCESS_INFORMATION pi;
 	ZeroMemory(&pi, sizeof(pi));
@@ -281,14 +292,15 @@ JNIEXPORT jlong JNICALL Java_saker_process_platform_win32_Win32NativeProcess_nat
 	HandleCloser stderrnamedpipe;
 	HandleCloser stderrwritepipe;
 	
+	HandleCloser stdoutfilehandlecloser;
+	HandleCloser stderrfilehandlecloser;
+	
 	HANDLE stdoutpipein = INVALID_HANDLE_VALUE;
 	HANDLE stdoutpipeout = INVALID_HANDLE_VALUE;
 	HANDLE stderrpipein = INVALID_HANDLE_VALUE;
 	HANDLE stderrpipeout = INVALID_HANDLE_VALUE;
 	
-	if (FLAG_IS_NULL_STDOUT(flags)) {
-		//keep them INVALID_HANDLE_VALUE
-	} else {
+	if (standardOutputConsumer != NULL) {
 		stdoutnamedpipe = createNamedPipeWithName(pipename);
 		if(stdoutnamedpipe.handle == INVALID_HANDLE_VALUE){
 			failure(env, "CreateNamedPipe", GetLastError());
@@ -302,18 +314,39 @@ JNIEXPORT jlong JNICALL Java_saker_process_platform_win32_Win32NativeProcess_nat
 		}
 		stdoutpipein = stdoutnamedpipe.handle;
 		stdoutpipeout = stdoutwritepipe.handle;
+		si.hStdOutput = stdoutpipeout;
+	} else if (stdoutfilepath != NULL) {
+		std::wstring fname = Java_To_WStr(env, stdoutfilepath);
+	
+		SECURITY_ATTRIBUTES secattrs_inherit_handle = {};
+		secattrs_inherit_handle.nLength = sizeof(SECURITY_ATTRIBUTES);
+		secattrs_inherit_handle.bInheritHandle = TRUE;
+		
+	    HANDLE h = CreateFileW(fname.c_str(),
+	        GENERIC_WRITE,
+	        FILE_SHARE_READ,
+	        &secattrs_inherit_handle,
+	        OPEN_ALWAYS,
+	        FILE_ATTRIBUTE_NORMAL,
+	        NULL 
+        );
+        if (h == INVALID_HANDLE_VALUE) {
+        	failure(env, "stdout CreateFile", GetLastError());
+			return 0;
+        }
+        stdoutfilehandlecloser = h;
+        //truncate the file if it was longer when opened
+        SetEndOfFile(h);
+        si.hStdOutput = h;
 	}
 	
 	if (FLAG_IS_MERGE_STDERR(flags)) {
-		if (stdoutnamedpipe.handle == INVALID_HANDLE_VALUE) {
+		if (si.hStdOutput == INVALID_HANDLE_VALUE) {
 			failureType(env, "java/lang/IllegalArgumentException", "Cannot merge standard error to null standard output.", NULL);
 			return 0;
 		}
-		stderrpipein = stdoutnamedpipe.handle;
-		stderrpipeout = stdoutwritepipe.handle;
-	} else if(FLAG_IS_NULL_STDERR(flags)) {
-		//keep them INVALID_HANDLE_VALUE
-	} else {
+		si.hStdError = si.hStdOutput;
+	} else if(standardErrorConsumer != NULL) {
 		//don't merge standard error
 		*errpipenameid++ = 'e';
 		*errpipenameid++ = 'r';
@@ -332,10 +365,32 @@ JNIEXPORT jlong JNICALL Java_saker_process_platform_win32_Win32NativeProcess_nat
 		}
 		stderrpipein = stderrnamedpipe.handle;
 		stderrpipeout = stderrwritepipe.handle;
+		si.hStdError = stderrpipeout;
+	} else if (stderrfilepath != NULL) {
+		std::wstring fname = Java_To_WStr(env, stderrfilepath);
+
+		SECURITY_ATTRIBUTES secattrs_inherit_handle = {};
+		secattrs_inherit_handle.nLength = sizeof(SECURITY_ATTRIBUTES);
+		secattrs_inherit_handle.bInheritHandle = TRUE;
+		
+	    HANDLE h = CreateFileW(fname.c_str(),
+	        GENERIC_WRITE,
+	        FILE_SHARE_READ,
+	        &secattrs_inherit_handle,
+	        OPEN_ALWAYS,
+	        FILE_ATTRIBUTE_NORMAL,
+	        NULL 
+        );
+        if (h == INVALID_HANDLE_VALUE) {
+        	failure(env, "stderr CreateFile", GetLastError());
+			return 0;
+        }
+        stderrfilehandlecloser = h;
+        //truncate the file if it was longer when opened
+        SetEndOfFile(h);
+        si.hStdError = h;
 	}
 	
-	si.hStdOutput = stdoutpipeout;
-	si.hStdError = stderrpipeout;
 	si.hStdInput = INVALID_HANDLE_VALUE;
 	si.dwFlags |= STARTF_USESTDHANDLES;
 
@@ -367,6 +422,10 @@ JNIEXPORT jlong JNICALL Java_saker_process_platform_win32_Win32NativeProcess_nat
 	LPCWSTR workingdirstr = workingdirectory == NULL ? NULL : workdir.c_str();
 	
 	LPVOID envblock = envstr == NULL ? NULL : (void*) environmentwstr.c_str();
+	
+	jobject outputconsumerref = standardOutputConsumer == NULL ? NULL : env->NewGlobalRef(standardOutputConsumer);
+	jobject errorconsumerref = standardErrorConsumer == NULL ? NULL : env->NewGlobalRef(standardErrorConsumer);
+	//XXX error handle global reference creationg
 
 	//notes: the CREATE_NO_WINDOW flag increases startup time SIGNIFICANTLY. like + 15 ms or so for simple processes
 	//       not specifying it creates a new console when used without one. e.g. in eclipse
@@ -390,12 +449,28 @@ JNIEXPORT jlong JNICALL Java_saker_process_platform_win32_Win32NativeProcess_nat
 	//don't need the thread handle, close it right away
 	CloseHandle(pi.hThread);
 	
-	NativeProcess* proc = new NativeProcess(pi, si, stdoutpipein, stdoutpipeout, stderrpipein, stderrpipeout, flags, reinterpret_cast<HANDLE>(interrupteventptr));
+	NativeProcess* proc = new NativeProcess(
+		pi, 
+		si, 
+		stdoutpipein, 
+		stdoutpipeout, 
+		stderrpipein, 
+		stderrpipeout, 
+		flags, 
+		reinterpret_cast<HANDLE>(interrupteventptr),
+		outputconsumerref,
+		errorconsumerref
+	);
+	
+	proc->stdOutFile = stdoutfilehandlecloser.handle;
+	proc->stdErrFile = stderrfilehandlecloser.handle;
 	
 	stdoutnamedpipe.handle = INVALID_HANDLE_VALUE;
 	stdoutwritepipe.handle = INVALID_HANDLE_VALUE;
 	stderrnamedpipe.handle = INVALID_HANDLE_VALUE;
 	stderrwritepipe.handle = INVALID_HANDLE_VALUE;
+	stdoutfilehandlecloser.handle = INVALID_HANDLE_VALUE;
+	stderrfilehandlecloser.handle = INVALID_HANDLE_VALUE;
 
 	return reinterpret_cast<jlong>(proc);
 }
@@ -556,9 +631,7 @@ JNIEXPORT void JNICALL Java_saker_process_platform_win32_Win32NativeProcess_nati
 	JNIEnv* env, 
 	jclass clazz, 
 	jlong nativeptr, 
-	jobject stdoutprocessor, 
 	jobject stdoutbytedirectbuffer,
-	jobject stderrprocessor,
 	jobject stderrbytedirectbuffer
 ) {
 	NativeProcess* proc = reinterpret_cast<NativeProcess*>(nativeptr);
@@ -577,6 +650,9 @@ JNIEXPORT void JNICALL Java_saker_process_platform_win32_Win32NativeProcess_nati
 		failureType(env, "java/lang/AssertionError", "GetMethodID", NULL);
 		return;
 	}
+	
+	jobject stdoutprocessor = proc->standardOutputConsumer;
+	jobject stderrprocessor = proc->standardErrorConsumer;
 	
 	int pipecount = 0;
 	
@@ -877,6 +953,18 @@ JNIEXPORT void JNICALL Java_saker_process_platform_win32_Win32NativeProcess_nati
 	}
 	if (proc->stdErrPipeOut != INVALID_HANDLE_VALUE && proc->stdErrPipeOut != proc->stdOutPipeOut) {
 		CloseHandle(proc->stdErrPipeOut);
+	}
+	if (proc->stdOutFile != INVALID_HANDLE_VALUE) {
+		CloseHandle(proc->stdOutFile);
+	}
+	if (proc->stdErrFile != INVALID_HANDLE_VALUE) {
+		CloseHandle(proc->stdErrFile);
+	}
+	if (proc->standardOutputConsumer != NULL) {
+		env->DeleteGlobalRef(proc->standardOutputConsumer);
+	}
+	if (proc->standardErrorConsumer != NULL) {
+		env->DeleteGlobalRef(proc->standardErrorConsumer);
 	}
 	
 	delete proc;

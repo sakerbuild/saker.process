@@ -243,11 +243,12 @@ public class RunProcessWorkerTaskFactory
 
 		@Override
 		public void handleOutput(ByteBuffer bytes) throws IOException {
+			int pos = bytes.position();
 			for (Iterator<? extends ProcessIOConsumer> it = consumers.iterator(); it.hasNext();) {
 				ProcessIOConsumer c = it.next();
 				c.handleOutput(bytes);
 				if (it.hasNext()) {
-					bytes.rewind();
+					bytes.position(pos);
 				}
 			}
 		}

@@ -50,24 +50,26 @@ public abstract class NativeProcess implements Closeable {
 
 	@Native
 	public static final int FLAG_MERGE_STDERR = 1 << 0;
-	@Native
-	public static final int FLAG_NULL_STDOUT = 1 << 1;
-	@Native
-	public static final int FLAG_NULL_STDERR = 1 << 2;
 
 	public static NativeProcess startNativeProcess(SakerPath exe, String[] commands, SakerPath workingdirectory,
-			int flags, Map<String, String> environment) throws IOException, IllegalArgumentException {
+			int flags, Map<String, String> environment, NativeProcessIOConsumer standardOutputConsumer,
+			NativeProcessIOConsumer standardErrorConsumer) throws IOException, IllegalArgumentException {
 		if (!LOADED) {
 			throw new IOException("Failed to load native platform process builder.");
 		}
-		if (((flags & (FLAG_MERGE_STDERR | FLAG_NULL_STDOUT)) == (FLAG_MERGE_STDERR | FLAG_NULL_STDOUT))) {
-			throw new IllegalArgumentException("Cannot use FLAG_MERGE_STDERR and FLAG_NULL_STDOUT together.");
+		if ((flags & (FLAG_MERGE_STDERR)) == (FLAG_MERGE_STDERR)) {
+			if (standardErrorConsumer != null) {
+				throw new IllegalArgumentException("Cannot use merge and consume std error at the same time.");
+			}
+			if (standardOutputConsumer == null) {
+				throw new IllegalArgumentException("Cannot use merge std error without std output consumer.");
+			}
 		}
-		return PLATFORM_PROCESS_FACTORY.startProcess(exe, commands, workingdirectory, flags, environment);
+		return PLATFORM_PROCESS_FACTORY.startProcess(exe, commands, workingdirectory, flags, environment,
+				standardOutputConsumer, standardErrorConsumer);
 	}
 
-	public abstract void processIO(NativeProcessIOConsumer stdoutprocessor, NativeProcessIOConsumer stderrprocessor)
-			throws IOException, InterruptedIOException, IllegalArgumentException;
+	public abstract void processIO() throws IOException, InterruptedIOException, IllegalArgumentException;
 
 	public abstract Integer exitValue() throws IllegalThreadStateException, IOException;
 

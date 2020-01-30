@@ -8,18 +8,35 @@ import java.util.Map.Entry;
 import saker.build.file.path.SakerPath;
 import saker.build.file.provider.SakerPathFiles;
 import saker.process.platform.NativeProcess;
+import saker.process.platform.NativeProcessIOConsumer;
 import saker.process.platform.PlatformProcessFactory;
+import saker.process.platform.RedirectFileNativeProcessIOConsumer;
 
 public class Win32PlatformProcessFactory implements PlatformProcessFactory {
 	@Override
 	public NativeProcess startProcess(SakerPath exe, String[] commands, SakerPath workingdirectory, int flags,
-			Map<String, String> environment) throws IOException, IllegalArgumentException {
+			Map<String, String> environment, NativeProcessIOConsumer standardOutputConsumer,
+			NativeProcessIOConsumer standardErrorConsumer) throws IOException, IllegalArgumentException {
 		if (exe != null) {
 			SakerPathFiles.requireAbsolutePath(exe);
 		}
 		if (workingdirectory != null) {
 			SakerPathFiles.requireAbsolutePath(workingdirectory);
 		}
+
+		String stdoutfileredirect = null;
+		String stderrfileredirect = null;
+		if (standardOutputConsumer instanceof RedirectFileNativeProcessIOConsumer) {
+			stdoutfileredirect = Win32NativeProcess
+					.getPathForNative(((RedirectFileNativeProcessIOConsumer) standardOutputConsumer).getPath());
+			standardOutputConsumer = null;
+		}
+		if (standardErrorConsumer instanceof RedirectFileNativeProcessIOConsumer) {
+			stderrfileredirect = Win32NativeProcess
+					.getPathForNative(((RedirectFileNativeProcessIOConsumer) standardErrorConsumer).getPath());
+			standardErrorConsumer = null;
+		}
+
 		long event = Win32NativeProcess.native_createInterruptEvent();
 		if (event == 0) {
 			throw new IOException("Failed to create process interruption event.");
@@ -49,7 +66,8 @@ public class Win32PlatformProcessFactory implements PlatformProcessFactory {
 				envstr = sb.toString();
 			}
 			nativeproc = Win32NativeProcess.native_startProcess(Win32NativeProcess.getPathForNative(exe), commands,
-					nativeworkdirstr, flags, UUID.randomUUID().toString(), event, envstr);
+					nativeworkdirstr, flags, UUID.randomUUID().toString(), event, envstr, standardOutputConsumer,
+					standardErrorConsumer, stdoutfileredirect, stderrfileredirect);
 		} catch (Throwable e) {
 			try {
 				Win32NativeProcess.native_closeInterruptEvent(event);
@@ -58,6 +76,6 @@ public class Win32PlatformProcessFactory implements PlatformProcessFactory {
 			}
 			throw e;
 		}
-		return new Win32NativeProcess(nativeproc, event, flags);
+		return new Win32NativeProcess(nativeproc, event, standardOutputConsumer != null, standardErrorConsumer != null);
 	}
 }

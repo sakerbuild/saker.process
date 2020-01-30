@@ -7,5 +7,6 @@ import saker.build.file.path.SakerPath;
 
 public interface PlatformProcessFactory {
 	public NativeProcess startProcess(SakerPath exe, String[] commands, SakerPath workingdirectory, int flags,
-			Map<String, String> environment) throws IOException, IllegalArgumentException;
+			Map<String, String> environment, NativeProcessIOConsumer standardOutputConsumer,
+			NativeProcessIOConsumer standardErrorConsumer) throws IOException, IllegalArgumentException;
 }

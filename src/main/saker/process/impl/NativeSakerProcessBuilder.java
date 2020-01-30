@@ -19,6 +19,7 @@ import saker.process.platform.NativeProcess;
 import saker.process.platform.NativeProcessIOConsumer;
 
 public class NativeSakerProcessBuilder implements SakerProcessBuilder {
+
 	private List<String> command;
 	private SakerPath workingDirectory;
 
@@ -91,29 +92,42 @@ public class NativeSakerProcessBuilder implements SakerProcessBuilder {
 		int flags = 0;
 		if (mergestderr) {
 			flags |= NativeProcess.FLAG_MERGE_STDERR;
-		} else {
-			if (stderrconsumer == null) {
-				flags |= NativeProcess.FLAG_NULL_STDERR;
-			}
-		}
-		if (stdoutconsumer == null) {
-			flags |= NativeProcess.FLAG_NULL_STDOUT;
 		}
 		String[] cmdarray = cmd.toArray(ObjectUtils.EMPTY_STRING_ARRAY);
-		NativeProcess nativeproc = NativeProcess.startNativeProcess(null, cmdarray, workingdir, flags, env);
+		NativeProcess nativeproc = NativeProcess.startNativeProcess(null, cmdarray, workingdir, flags, env,
+				toNativeIOConsumer(stdoutconsumer), toNativeIOConsumer(stderrconsumer));
 		return new NativeSakerProcess(nativeproc, stdoutconsumer, stderrconsumer);
+	}
+
+	private static NativeProcessIOConsumer toNativeIOConsumer(ProcessIOConsumer consumer) {
+		if (consumer == null) {
+			return null;
+		}
+		NativeProcessIOConsumer nativeconsumer = new NativeProcessIOConsumer() {
+			@Override
+			public void handleOutput(ByteBuffer bytes) throws IOException {
+				consumer.handleOutput(bytes);
+			}
+		};
+		if (consumer instanceof RedirectFileProcessIOConsumer) {
+			RedirectFileProcessIOConsumer redirectconsumer = (RedirectFileProcessIOConsumer) consumer;
+			//close so it won't replace the file in its own closing
+			redirectconsumer.setClosed();
+			return NativeProcessIOConsumer.redirectFile(redirectconsumer.getPath(), nativeconsumer);
+		}
+		return nativeconsumer;
 	}
 
 	private static final class NativeSakerProcess implements SakerProcess {
 		private final NativeProcess proc;
-		private ProcessIOConsumer standardOutputConsumer;
-		private ProcessIOConsumer standardErrorConsumer;
+		private final ProcessIOConsumer standardOutputConsumer;
+		private final ProcessIOConsumer standardErrorConsumer;
 
-		private NativeSakerProcess(NativeProcess nativeproc, ProcessIOConsumer standardOutputConsumer,
-				ProcessIOConsumer standardErrorConsumer) {
+		private NativeSakerProcess(NativeProcess nativeproc, ProcessIOConsumer stdoutconsumer,
+				ProcessIOConsumer stderrconsumer) {
 			this.proc = nativeproc;
-			this.standardOutputConsumer = standardOutputConsumer;
-			this.standardErrorConsumer = standardErrorConsumer;
+			this.standardOutputConsumer = stdoutconsumer;
+			this.standardErrorConsumer = stderrconsumer;
 		}
 
 		@Override
@@ -130,7 +144,7 @@ public class NativeSakerProcessBuilder implements SakerProcessBuilder {
 
 		@Override
 		public void processIO() throws IllegalStateException, IOException {
-			proc.processIO(toNativeIOConsumer(standardOutputConsumer), toNativeIOConsumer(standardErrorConsumer));
+			proc.processIO();
 		}
 
 		@Override
@@ -143,16 +157,5 @@ public class NativeSakerProcessBuilder implements SakerProcessBuilder {
 			IOUtils.close(standardOutputConsumer, standardErrorConsumer, proc);
 		}
 
-		private static NativeProcessIOConsumer toNativeIOConsumer(ProcessIOConsumer stdouthandler) {
-			if (stdouthandler == null) {
-				return null;
-			}
-			return new NativeProcessIOConsumer() {
-				@Override
-				public void handleOutput(ByteBuffer bytes) throws IOException {
-					stdouthandler.handleOutput(bytes);
-				}
-			};
-		}
 	}
 }

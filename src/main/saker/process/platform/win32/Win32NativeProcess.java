@@ -20,44 +20,38 @@ import saker.process.platform.NativeProcessIOConsumer;
 public class Win32NativeProcess extends NativeProcess {
 	private static final int DEFAULT_IO_PROCESSING_DIRECT_BUFFER_SIZE = 1024 * 8;
 
-	@Native
-	public static final int FLAG_MERGE_STDERR = 1 << 0;
-
 	protected long nativePtr;
 	protected long interruptEventPtr;
-	protected final int flags;
 	protected final InterrupterSelector interruptor = new InterrupterSelector();
 
 	private final Object interruptSync = new Object();
 
-	/*default*/ Win32NativeProcess(long nativePtr, long interruptEventPtr, int flags) {
+	private boolean processstdout;
+	private boolean processstderr;
+
+	/*default*/ Win32NativeProcess(long nativePtr, long interruptEventPtr, boolean processstdout,
+			boolean processstderr) {
 		this.nativePtr = nativePtr;
 		this.interruptEventPtr = interruptEventPtr;
-		this.flags = flags;
+		this.processstdout = processstdout;
+		this.processstderr = processstderr;
 	}
 
 	@Override
-	public void processIO(NativeProcessIOConsumer stdoutprocessor, NativeProcessIOConsumer stderrprocessor)
-			throws IOException, InterruptedIOException {
+	public void processIO() throws IOException, InterruptedIOException {
 		ByteBuffer errbuffer;
-		if (((flags & FLAG_MERGE_STDERR) == FLAG_MERGE_STDERR) || stderrprocessor == null) {
-			errbuffer = null;
-		} else {
-			if (((flags & FLAG_NULL_STDERR) == FLAG_NULL_STDERR)) {
-				throw new IllegalArgumentException("Cannot process IO for null standard error.");
-			}
+		if (processstderr) {
 			errbuffer = ByteBuffer.allocateDirect(DEFAULT_IO_PROCESSING_DIRECT_BUFFER_SIZE)
 					.order(ByteOrder.nativeOrder());
+		} else {
+			errbuffer = null;
 		}
 		ByteBuffer stdbuffer;
-		if (stdoutprocessor == null) {
-			stdbuffer = null;
-		} else {
-			if (((flags & FLAG_NULL_STDOUT) == FLAG_NULL_STDOUT)) {
-				throw new IllegalArgumentException("Cannot process IO for null standard output.");
-			}
+		if (processstdout) {
 			stdbuffer = ByteBuffer.allocateDirect(DEFAULT_IO_PROCESSING_DIRECT_BUFFER_SIZE)
 					.order(ByteOrder.nativeOrder());
+		} else {
+			stdbuffer = null;
 		}
 
 		try {
@@ -72,7 +66,7 @@ public class Win32NativeProcess extends NativeProcess {
 					}
 				}
 				try {
-					native_processIO(nativePtr, stdoutprocessor, stdbuffer, stderrprocessor, errbuffer);
+					native_processIO(nativePtr, stdbuffer, errbuffer);
 				} catch (InterruptedException e) {
 					//reinterrupt the thread, as we don't directly throw the interrupted exception
 					Thread.currentThread().interrupt();
@@ -202,16 +196,17 @@ public class Win32NativeProcess extends NativeProcess {
 	}
 
 	/*default*/ static native long native_startProcess(String exe, String[] commands, String workingdirectory,
-			int flags, String pipeid, long interrupteventptr, String envstr) throws IOException;
+			int flags, String pipeid, long interrupteventptr, String envstr,
+			NativeProcessIOConsumer standardOutputConsumer, NativeProcessIOConsumer standardErrorConsumer,
+			String stdoutfilepath, String stderrfilepath) throws IOException;
 
 	/*default*/ static native long native_createInterruptEvent();
 
 	private static native Integer native_waitFor(long nativeptr, long timeoutmillis)
 			throws InterruptedException, IOException;
 
-	private static native void native_processIO(long nativeptr, NativeProcessIOConsumer stdoutprocessor,
-			ByteBuffer stdoutbytedirectbuffer, NativeProcessIOConsumer stderrprocessor, ByteBuffer errbytedirectbuffer)
-			throws IOException, InterruptedException;
+	private static native void native_processIO(long nativeptr, ByteBuffer stdoutbytedirectbuffer,
+			ByteBuffer errbytedirectbuffer) throws IOException, InterruptedException;
 
 	private static native Integer native_getExitCode(long nativeptr) throws IOException, IllegalThreadStateException;
 
