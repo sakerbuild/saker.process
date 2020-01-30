@@ -11,8 +11,6 @@ import saker.process.impl.NativeSakerProcessBuilder;
 import saker.process.platform.NativeProcess;
 
 public interface SakerProcessBuilder {
-	//TODO handle std out and err redirections
-
 	public SakerProcessBuilder setCommand(List<String> command) throws NullPointerException;
 
 	public Map<String, String> getEnvironment();
@@ -31,6 +29,10 @@ public interface SakerProcessBuilder {
 		if (NativeProcess.LOADED) {
 			return new NativeSakerProcessBuilder();
 		}
+		return new JavaSakerProcessBuilder();
+	}
+
+	public static SakerProcessBuilder createJREBuilder() {
 		return new JavaSakerProcessBuilder();
 	}
 }

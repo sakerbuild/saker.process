@@ -5,14 +5,14 @@ import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 
 public interface SakerProcess extends Closeable {
+	//doc: may return instantly if there's no relevant IO processing. it may not wait the process to exit.
+	public void processIO() throws IllegalStateException, IOException;
+
 	public Integer exitValue() throws IllegalStateException, IOException;
 
 	public int waitFor() throws IllegalStateException, InterruptedException, IOException;
 
 	public boolean waitFor(long timeout, TimeUnit unit) throws IllegalStateException, InterruptedException, IOException;
-
-	//doc: may return instantly if there's no relevant IO processing. it may not wait the process to exit.
-	public void processIO() throws IllegalStateException, IOException;
 
 	/**
 	 * Releases the native resources for this process.
