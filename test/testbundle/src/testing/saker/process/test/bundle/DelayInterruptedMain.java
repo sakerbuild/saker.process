@@ -30,31 +30,32 @@ public class DelayInterruptedMain {
 		});
 		interruptingthread.setDaemon(true);
 		interruptingthread.start();
-		SakerProcess proc = pb.start();
-		try {
-			proc.processIO();
-			throw new AssertionError("Interruption unnoticed.");
-		} catch (InterruptedIOException e) {
-			//clear the flag so we can wait for
-			Thread.interrupted();
-		}
+		try (SakerProcess proc = pb.start()) {
+			try {
+				proc.processIO();
+				throw new AssertionError("Interruption unnoticed.");
+			} catch (InterruptedIOException e) {
+				//clear the flag so we can wait for
+				Thread.interrupted();
+			}
 
-		if (stdout.getOutputString().isEmpty()) {
-			throw new AssertionError("No stdout was captured");
-		}
-		if (stderr.getOutputString().isEmpty()) {
-			throw new AssertionError("No stderr was captured");
-		}
+			if (stdout.getOutputString().isEmpty()) {
+				throw new AssertionError("No stdout was captured");
+			}
+			if (stderr.getOutputString().isEmpty()) {
+				throw new AssertionError("No stderr was captured");
+			}
 
-		System.out.println("----- stdout -----");
-		System.out.println(stdout.getOutputString());
-		System.out.println("----- stderr -----");
-		System.out.println(stderr.getOutputString());
-		System.out.println("-----  end   -----");
-		int exitcode = proc.waitFor();
-		if (exitcode != 0) {
-			throw new AssertionError(exitcode);
+			System.out.println("----- stdout -----");
+			System.out.println(stdout.getOutputString());
+			System.out.println("----- stderr -----");
+			System.out.println(stderr.getOutputString());
+			System.out.println("-----  end   -----");
+			int exitcode = proc.waitFor();
+			if (exitcode != 0) {
+				throw new AssertionError(exitcode);
+			}
+			System.out.println("Exit code: " + exitcode);
 		}
-		System.out.println("Exit code: " + exitcode);
 	}
 }

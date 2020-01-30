@@ -31,6 +31,7 @@ import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.build.thirdparty.saker.util.ObjectUtils;
 import saker.build.thirdparty.saker.util.io.ByteArrayRegion;
 import saker.build.thirdparty.saker.util.io.ByteSink;
+import saker.build.thirdparty.saker.util.io.IOUtils;
 import saker.build.thirdparty.saker.util.io.SerialUtils;
 import saker.build.thirdparty.saker.util.io.UnsyncByteArrayOutputStream;
 import saker.process.api.ProcessIOConsumer;
@@ -206,11 +207,12 @@ public class RunProcessWorkerTaskFactory
 			pb.setStandardErrorConsumer(MultiProcessIOConsumer.get(stderrconsumers));
 		}
 
-		SakerProcess proc = pb.start();
+		int exitcode;
+		try (SakerProcess proc = pb.start()) {
+			proc.processIO();
 
-		proc.processIO();
-
-		int exitcode = proc.waitFor();
+			exitcode = proc.waitFor();
+		}
 		ProcessResultContextImpl resultcontext = new ProcessResultContextImpl(taskcontext, exitcode);
 		for (ProcessResultHandler rh : argcontext.resultHandlers) {
 			rh.handleProcessResult(resultcontext);
@@ -248,6 +250,11 @@ public class RunProcessWorkerTaskFactory
 					bytes.rewind();
 				}
 			}
+		}
+
+		@Override
+		public void close() throws IOException {
+			IOUtils.close(consumers);
 		}
 
 	}

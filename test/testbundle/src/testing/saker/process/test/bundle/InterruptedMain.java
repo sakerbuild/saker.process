@@ -21,19 +21,20 @@ public class InterruptedMain {
 		pb.setStandardOutputConsumer(stdout);
 		pb.setStandardErrorConsumer(stderr);
 
-		SakerProcess proc = pb.start();
-		try {
-			proc.processIO();
-			throw new AssertionError("Interruption unnoticed.");
-		} catch (InterruptedIOException e) {
-			//clear the flag so we can wait for
-			Thread.interrupted();
-		}
+		try (SakerProcess proc = pb.start()) {
+			try {
+				proc.processIO();
+				throw new AssertionError("Interruption unnoticed.");
+			} catch (InterruptedIOException e) {
+				//clear the flag so we can wait for
+				Thread.interrupted();
+			}
 
-		int exitcode = proc.waitFor();
-		if (exitcode != 0) {
-			throw new AssertionError(exitcode);
+			int exitcode = proc.waitFor();
+			if (exitcode != 0) {
+				throw new AssertionError(exitcode);
+			}
+			System.out.println("Exit code: " + exitcode);
 		}
-		System.out.println("Exit code: " + exitcode);
 	}
 }

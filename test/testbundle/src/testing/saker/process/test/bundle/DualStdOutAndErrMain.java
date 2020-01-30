@@ -17,23 +17,24 @@ public class DualStdOutAndErrMain {
 		pb.setStandardOutputConsumer(stdout);
 		pb.setStandardErrorConsumer(stderr);
 
-		SakerProcess proc = pb.start();
-		proc.processIO();
-		if (!stdout.getOutputString().equals("print-stdout")) {
-			throw new AssertionError();
+		try (SakerProcess proc = pb.start()) {
+			proc.processIO();
+			if (!stdout.getOutputString().equals("print-stdout")) {
+				throw new AssertionError();
+			}
+			if (!stderr.getOutputString().equals("print-stderr")) {
+				throw new AssertionError();
+			}
+			System.out.println("----- stdout -----");
+			System.out.println(stdout.getOutputString());
+			System.out.println("----- stderr -----");
+			System.out.println(stderr.getOutputString());
+			System.out.println("-----  end   -----");
+			int exitcode = proc.waitFor();
+			if (exitcode != 0) {
+				throw new AssertionError(exitcode);
+			}
+			System.out.println("Exit code: " + exitcode);
 		}
-		if (!stderr.getOutputString().equals("print-stderr")) {
-			throw new AssertionError();
-		}
-		System.out.println("----- stdout -----");
-		System.out.println(stdout.getOutputString());
-		System.out.println("----- stderr -----");
-		System.out.println(stderr.getOutputString());
-		System.out.println("-----  end   -----");
-		int exitcode = proc.waitFor();
-		if (exitcode != 0) {
-			throw new AssertionError(exitcode);
-		}
-		System.out.println("Exit code: " + exitcode);
 	}
 }

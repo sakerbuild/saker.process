@@ -135,6 +135,7 @@ public class JavaSakerProcessBuilder implements SakerProcessBuilder {
 
 		@Override
 		public void close() throws IOException {
+			IOUtils.close(standardOutputConsumer, standardErrorConsumer);
 		}
 
 		private static final byte[] THROWAWAY_CONSUME_BUFFER = new byte[1024 * 8];

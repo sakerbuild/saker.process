@@ -12,13 +12,14 @@ public class NonConsumedStdOutAndErrMain {
 			throw new AssertionError("Unexpected class of process builder: " + pb);
 		}
 		pb.setCommand(Arrays.asList("java", "-jar", args[0]));
-		SakerProcess proc = pb.start();
-		proc.processIO();
+		try (SakerProcess proc = pb.start()) {
+			proc.processIO();
 
-		int exitcode = proc.waitFor();
-		if (exitcode != 0) {
-			throw new AssertionError(exitcode);
+			int exitcode = proc.waitFor();
+			if (exitcode != 0) {
+				throw new AssertionError(exitcode);
+			}
+			System.out.println("Exit code: " + exitcode);
 		}
-		System.out.println("Exit code: " + exitcode);
 	}
 }

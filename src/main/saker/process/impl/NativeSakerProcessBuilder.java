@@ -11,6 +11,7 @@ import java.util.concurrent.TimeUnit;
 import saker.build.file.path.SakerPath;
 import saker.build.file.provider.SakerPathFiles;
 import saker.build.thirdparty.saker.util.ObjectUtils;
+import saker.build.thirdparty.saker.util.io.IOUtils;
 import saker.process.api.ProcessIOConsumer;
 import saker.process.api.SakerProcess;
 import saker.process.api.SakerProcessBuilder;
@@ -139,7 +140,7 @@ public class NativeSakerProcessBuilder implements SakerProcessBuilder {
 
 		@Override
 		public void close() throws IOException {
-			proc.close();
+			IOUtils.close(standardOutputConsumer, standardErrorConsumer, proc);
 		}
 
 		private static NativeProcessIOConsumer toNativeIOConsumer(ProcessIOConsumer stdouthandler) {
