@@ -16,17 +16,24 @@ public class InterruptedMain {
 		Thread.currentThread().interrupt();
 
 		pb.setCommand(Arrays.asList("java", "-version"));
-		SakerProcess proc = pb.start();
 		CollectingProcessIOConsumer stdout = new CollectingProcessIOConsumer();
 		CollectingProcessIOConsumer stderr = new CollectingProcessIOConsumer();
+		pb.setStandardOutputConsumer(stdout);
+		pb.setStandardErrorConsumer(stderr);
+
+		SakerProcess proc = pb.start();
 		try {
-			proc.processIO(stdout, stderr);
+			proc.processIO();
 			throw new AssertionError("Interruption unnoticed.");
 		} catch (InterruptedIOException e) {
 			//clear the flag so we can wait for
 			Thread.interrupted();
 		}
 
-		System.out.println("InterruptedMain.main() " + proc.waitFor());
+		int exitcode = proc.waitFor();
+		if (exitcode != 0) {
+			throw new AssertionError(exitcode);
+		}
+		System.out.println("Exit code: " + exitcode);
 	}
 }

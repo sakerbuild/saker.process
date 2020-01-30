@@ -50,17 +50,24 @@ public abstract class NativeProcess implements Closeable {
 
 	@Native
 	public static final int FLAG_MERGE_STDERR = 1 << 0;
+	@Native
+	public static final int FLAG_NULL_STDOUT = 1 << 1;
+	@Native
+	public static final int FLAG_NULL_STDERR = 1 << 2;
 
 	public static NativeProcess startNativeProcess(SakerPath exe, String[] commands, SakerPath workingdirectory,
 			int flags, Map<String, String> environment) throws IOException, IllegalArgumentException {
 		if (!LOADED) {
 			throw new IOException("Failed to load native platform process builder.");
 		}
+		if (((flags & (FLAG_MERGE_STDERR | FLAG_NULL_STDOUT)) == (FLAG_MERGE_STDERR | FLAG_NULL_STDOUT))) {
+			throw new IllegalArgumentException("Cannot use FLAG_MERGE_STDERR and FLAG_NULL_STDOUT together.");
+		}
 		return PLATFORM_PROCESS_FACTORY.startProcess(exe, commands, workingdirectory, flags, environment);
 	}
 
 	public abstract void processIO(NativeProcessIOConsumer stdoutprocessor, NativeProcessIOConsumer stderrprocessor)
-			throws IOException, InterruptedIOException;
+			throws IOException, InterruptedIOException, IllegalArgumentException;
 
 	public abstract Integer exitValue() throws IllegalThreadStateException, IOException;
 

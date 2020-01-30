@@ -2,7 +2,6 @@ package saker.process.impl.run;
 
 import java.io.Externalizable;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.nio.ByteBuffer;
@@ -180,9 +179,11 @@ public class RunProcessWorkerTaskFactory
 		}
 
 		ByteSink stdoutsink = taskcontext.getStandardOut();
-		if (argcontext.standardOutputConsumers.isEmpty() && argcontext.standardErrorConsumers.isEmpty()) {
-			pb.setMergeStandardError(true);
-			argcontext.standardOutputConsumers.add(new ProcessIOConsumer() {
+		List<ProcessIOConsumer> stdoutconsumers = argcontext.standardOutputConsumers;
+		List<ProcessIOConsumer> stderrconsumers = argcontext.standardErrorConsumers;
+		if (stdoutconsumers.isEmpty() && stderrconsumers.isEmpty()) {
+			pb.setStandardErrorMerge(true);
+			pb.setStandardOutputConsumer(new ProcessIOConsumer() {
 				private UnsyncByteArrayOutputStream buf;
 
 				@Override
@@ -200,12 +201,14 @@ public class RunProcessWorkerTaskFactory
 					}
 				}
 			});
+		} else {
+			pb.setStandardOutputConsumer(MultiProcessIOConsumer.get(stdoutconsumers));
+			pb.setStandardErrorConsumer(MultiProcessIOConsumer.get(stderrconsumers));
 		}
-		List<ProcessIOConsumer> stdoutconsumers = argcontext.standardOutputConsumers;
-		List<ProcessIOConsumer> stderrconsumers = argcontext.standardErrorConsumers;
 
 		SakerProcess proc = pb.start();
-		proc.processIO(MultiProcessIOConsumer.get(stdoutconsumers), MultiProcessIOConsumer.get(stderrconsumers));
+
+		proc.processIO();
 
 		int exitcode = proc.waitFor();
 		ProcessResultContextImpl resultcontext = new ProcessResultContextImpl(taskcontext, exitcode);
@@ -247,17 +250,6 @@ public class RunProcessWorkerTaskFactory
 			}
 		}
 
-	}
-
-	private static void copyStreamToConsumers(InputStream procin, List<ProcessIOConsumer> stdoutconsumers)
-			throws IOException, Exception {
-		byte[] buffer = new byte[1024 * 8];
-		for (int read; (read = procin.read(buffer)) > 0;) {
-			ByteBuffer bbuf = ByteBuffer.wrap(buffer, 0, read);
-			for (ProcessIOConsumer consumer : stdoutconsumers) {
-				consumer.handleOutput(bbuf);
-			}
-		}
 	}
 
 	@Override

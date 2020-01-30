@@ -12,10 +12,13 @@ public class DualStdOutAndErrMain {
 			throw new AssertionError("Unexpected class of process builder: " + pb);
 		}
 		pb.setCommand(Arrays.asList("java", "-jar", args[0]));
-		SakerProcess proc = pb.start();
 		CollectingProcessIOConsumer stdout = new CollectingProcessIOConsumer();
 		CollectingProcessIOConsumer stderr = new CollectingProcessIOConsumer();
-		proc.processIO(stdout, stderr);
+		pb.setStandardOutputConsumer(stdout);
+		pb.setStandardErrorConsumer(stderr);
+
+		SakerProcess proc = pb.start();
+		proc.processIO();
 		if (!stdout.getOutputString().equals("print-stdout")) {
 			throw new AssertionError();
 		}
@@ -27,6 +30,10 @@ public class DualStdOutAndErrMain {
 		System.out.println("----- stderr -----");
 		System.out.println(stderr.getOutputString());
 		System.out.println("-----  end   -----");
-		System.out.println("DualStdOutAndErrMain.main() " + proc.waitFor());
+		int exitcode = proc.waitFor();
+		if (exitcode != 0) {
+			throw new AssertionError(exitcode);
+		}
+		System.out.println("Exit code: " + exitcode);
 	}
 }

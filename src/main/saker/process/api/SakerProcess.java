@@ -11,8 +11,8 @@ public interface SakerProcess extends Closeable {
 
 	public boolean waitFor(long timeout, TimeUnit unit) throws IllegalStateException, InterruptedException, IOException;
 
-	public void processIO(ProcessIOConsumer stdouthandler, ProcessIOConsumer stderrhandler)
-			throws IllegalStateException, IOException;
+	//doc: may return instantly if there's no relevant IO processing. it may not wait the process to exit.
+	public void processIO() throws IllegalStateException, IOException;
 
 	/**
 	 * Releases the native resources for this process.

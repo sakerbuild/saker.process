@@ -19,6 +19,8 @@ import saker.process.api.SakerProcessBuilder;
 
 public class JavaSakerProcessBuilder implements SakerProcessBuilder {
 	private ProcessBuilder pb = new ProcessBuilder();
+	private ProcessIOConsumer standardErrorConsumer;
+	private ProcessIOConsumer standardOutputConsumer;
 
 	@Override
 	public SakerProcessBuilder setCommand(List<String> command) {
@@ -38,22 +40,41 @@ public class JavaSakerProcessBuilder implements SakerProcessBuilder {
 	}
 
 	@Override
-	public SakerProcessBuilder setMergeStandardError(boolean mergestderr) {
+	public SakerProcessBuilder setStandardOutputConsumer(ProcessIOConsumer consumer) {
+		this.standardOutputConsumer = consumer;
+		return null;
+	}
+
+	@Override
+	public SakerProcessBuilder setStandardErrorMerge(boolean mergestderr) {
+		this.standardErrorConsumer = null;
 		pb.redirectErrorStream(mergestderr);
 		return this;
 	}
 
 	@Override
+	public SakerProcessBuilder setStandardErrorConsumer(ProcessIOConsumer consumer) {
+		this.standardErrorConsumer = consumer;
+		pb.redirectErrorStream(false);
+		return null;
+	}
+
+	@Override
 	public SakerProcess start() throws IOException {
 		Process proc = pb.start();
-		return new JavaSakerProcess(proc);
+		return new JavaSakerProcess(proc, standardOutputConsumer, standardErrorConsumer);
 	}
 
 	private static final class JavaSakerProcess implements SakerProcess {
 		private final Process proc;
+		private final ProcessIOConsumer standardOutputConsumer;
+		private final ProcessIOConsumer standardErrorConsumer;
 
-		private JavaSakerProcess(Process proc) {
+		private JavaSakerProcess(Process proc, ProcessIOConsumer standardOutputConsumer,
+				ProcessIOConsumer standardErrorConsumer) {
 			this.proc = proc;
+			this.standardOutputConsumer = standardOutputConsumer;
+			this.standardErrorConsumer = standardErrorConsumer;
 		}
 
 		@Override
@@ -77,28 +98,27 @@ public class JavaSakerProcessBuilder implements SakerProcessBuilder {
 		}
 
 		@Override
-		public void processIO(ProcessIOConsumer stdouthandler, ProcessIOConsumer stderrhandler)
-				throws IllegalStateException, IOException {
+		public void processIO() throws IllegalStateException, IOException {
 			//synchronize, only a single client can process the IO at once
 			synchronized (this) {
 				InputStream stderrstream = proc.getErrorStream();
 				InputStream stdoutstream = proc.getInputStream();
 				if (stderrstream == null) {
 					//the standard error is redirected
-					copyStreamToConsumers(stdoutstream, stdouthandler);
+					copyStreamToConsumers(stdoutstream, standardOutputConsumer);
 					return;
 				}
 
 				//both streams are present
 				//even if the std err handler is null, we need to consume the stream otherwise the child process can halt
 				ExceptionThread errconsumer = new ExceptionThread((ThrowingRunnable) () -> {
-					copyStreamToConsumers(stderrstream, stderrhandler);
+					copyStreamToConsumers(stderrstream, standardErrorConsumer);
 				}, "Proc-stderr-consumer");
 				errconsumer.setDaemon(true);
 				errconsumer.start();
 				Throwable exc = null;
 				try {
-					copyStreamToConsumers(stdoutstream, stdouthandler);
+					copyStreamToConsumers(stdoutstream, standardOutputConsumer);
 				} catch (Exception e) {
 					exc = IOUtils.addExc(exc, e);
 				}

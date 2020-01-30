@@ -234,6 +234,8 @@ static HANDLE openPipeWrite(const char* pipename) {
 }
 
 #define FLAG_IS_MERGE_STDERR(flags) ((flags & Java_const_saker_process_platform_NativeProcess_FLAG_MERGE_STDERR) == Java_const_saker_process_platform_NativeProcess_FLAG_MERGE_STDERR)
+#define FLAG_IS_NULL_STDOUT(flags) ((flags & Java_const_saker_process_platform_NativeProcess_FLAG_NULL_STDOUT) == Java_const_saker_process_platform_NativeProcess_FLAG_NULL_STDOUT)
+#define FLAG_IS_NULL_STDERR(flags) ((flags & Java_const_saker_process_platform_NativeProcess_FLAG_NULL_STDERR) == Java_const_saker_process_platform_NativeProcess_FLAG_NULL_STDERR)
 
 JNIEXPORT jlong JNICALL Java_saker_process_platform_win32_Win32NativeProcess_native_1startProcess(
 	JNIEnv* env, 
@@ -279,24 +281,39 @@ JNIEXPORT jlong JNICALL Java_saker_process_platform_win32_Win32NativeProcess_nat
 	HandleCloser stderrnamedpipe;
 	HandleCloser stderrwritepipe;
 	
-	stdoutnamedpipe = createNamedPipeWithName(pipename);
-	if(stdoutnamedpipe.handle == INVALID_HANDLE_VALUE){
-		failure(env, "CreateNamedPipe", GetLastError());
-		return 0;
+	HANDLE stdoutpipein = INVALID_HANDLE_VALUE;
+	HANDLE stdoutpipeout = INVALID_HANDLE_VALUE;
+	HANDLE stderrpipein = INVALID_HANDLE_VALUE;
+	HANDLE stderrpipeout = INVALID_HANDLE_VALUE;
+	
+	if (FLAG_IS_NULL_STDOUT(flags)) {
+		//keep them INVALID_HANDLE_VALUE
+	} else {
+		stdoutnamedpipe = createNamedPipeWithName(pipename);
+		if(stdoutnamedpipe.handle == INVALID_HANDLE_VALUE){
+			failure(env, "CreateNamedPipe", GetLastError());
+			return 0;
+		}
+		
+		stdoutwritepipe = openPipeWrite(pipename);
+		if (stdoutwritepipe.handle == INVALID_HANDLE_VALUE){
+			failure(env, "CreateFile", GetLastError());
+			return 0;
+		}
+		stdoutpipein = stdoutnamedpipe.handle;
+		stdoutpipeout = stdoutwritepipe.handle;
 	}
 	
-	stdoutwritepipe = openPipeWrite(pipename);
-	if (stdoutwritepipe.handle == INVALID_HANDLE_VALUE){
-		failure(env, "CreateFile", GetLastError());
-		return 0;
-	}
-	
-	HANDLE stdoutpipein = stdoutnamedpipe.handle;
-	HANDLE stdoutpipeout = stdoutwritepipe.handle;
-	HANDLE stderrpipein = stdoutnamedpipe.handle;
-	HANDLE stderrpipeout = stdoutwritepipe.handle;
-	
-	if (!FLAG_IS_MERGE_STDERR(flags)) {
+	if (FLAG_IS_MERGE_STDERR(flags)) {
+		if (stdoutnamedpipe.handle == INVALID_HANDLE_VALUE) {
+			failureType(env, "java/lang/IllegalArgumentException", "Cannot merge standard error to null standard output.", NULL);
+			return 0;
+		}
+		stderrpipein = stdoutnamedpipe.handle;
+		stderrpipeout = stdoutwritepipe.handle;
+	} else if(FLAG_IS_NULL_STDERR(flags)) {
+		//keep them INVALID_HANDLE_VALUE
+	} else {
 		//don't merge standard error
 		*errpipenameid++ = 'e';
 		*errpipenameid++ = 'r';
@@ -545,6 +562,11 @@ JNIEXPORT void JNICALL Java_saker_process_platform_win32_Win32NativeProcess_nati
 	jobject stderrbytedirectbuffer
 ) {
 	NativeProcess* proc = reinterpret_cast<NativeProcess*>(nativeptr);
+	
+	if (proc->stdOutPipeIn == INVALID_HANDLE_VALUE && !proc->hasStdErrDifferentFromStdOut()) {
+		//no IO to process, we can return immediately
+		return;
+	}
 	
 	jmethodID outputnotifymethod = env->GetStaticMethodID(
 		clazz,

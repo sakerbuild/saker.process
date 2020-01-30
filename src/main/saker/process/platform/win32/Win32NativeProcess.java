@@ -43,6 +43,9 @@ public class Win32NativeProcess extends NativeProcess {
 		if (((flags & FLAG_MERGE_STDERR) == FLAG_MERGE_STDERR) || stderrprocessor == null) {
 			errbuffer = null;
 		} else {
+			if (((flags & FLAG_NULL_STDERR) == FLAG_NULL_STDERR)) {
+				throw new IllegalArgumentException("Cannot process IO for null standard error.");
+			}
 			errbuffer = ByteBuffer.allocateDirect(DEFAULT_IO_PROCESSING_DIRECT_BUFFER_SIZE)
 					.order(ByteOrder.nativeOrder());
 		}
@@ -50,6 +53,9 @@ public class Win32NativeProcess extends NativeProcess {
 		if (stdoutprocessor == null) {
 			stdbuffer = null;
 		} else {
+			if (((flags & FLAG_NULL_STDOUT) == FLAG_NULL_STDOUT)) {
+				throw new IllegalArgumentException("Cannot process IO for null standard output.");
+			}
 			stdbuffer = ByteBuffer.allocateDirect(DEFAULT_IO_PROCESSING_DIRECT_BUFFER_SIZE)
 					.order(ByteOrder.nativeOrder());
 		}

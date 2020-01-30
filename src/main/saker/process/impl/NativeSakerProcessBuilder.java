@@ -19,10 +19,13 @@ import saker.process.platform.NativeProcessIOConsumer;
 
 public class NativeSakerProcessBuilder implements SakerProcessBuilder {
 	private List<String> command;
-	private boolean mergeStandardError;
 	private SakerPath workingDirectory;
 
 	private Map<String, String> environment;
+
+	private ProcessIOConsumer standardErrorConsumer;
+	private ProcessIOConsumer standardOutputConsumer;
+	private boolean mergeStandardError;
 
 	@Override
 	public SakerProcessBuilder setCommand(List<String> command) {
@@ -53,9 +56,23 @@ public class NativeSakerProcessBuilder implements SakerProcessBuilder {
 	}
 
 	@Override
-	public SakerProcessBuilder setMergeStandardError(boolean mergestderr) {
-		mergeStandardError = mergestderr;
+	public SakerProcessBuilder setStandardOutputConsumer(ProcessIOConsumer consumer) {
+		this.standardOutputConsumer = consumer;
+		return null;
+	}
+
+	@Override
+	public SakerProcessBuilder setStandardErrorMerge(boolean mergestderr) {
+		this.standardErrorConsumer = null;
+		this.mergeStandardError = mergestderr;
 		return this;
+	}
+
+	@Override
+	public SakerProcessBuilder setStandardErrorConsumer(ProcessIOConsumer consumer) {
+		this.standardErrorConsumer = consumer;
+		this.mergeStandardError = false;
+		return null;
 	}
 
 	@Override
@@ -67,21 +84,35 @@ public class NativeSakerProcessBuilder implements SakerProcessBuilder {
 		boolean mergestderr = this.mergeStandardError;
 		SakerPath workingdir = this.workingDirectory;
 		Map<String, String> env = this.environment;
+		ProcessIOConsumer stdoutconsumer = standardOutputConsumer;
+		ProcessIOConsumer stderrconsumer = standardErrorConsumer;
 
 		int flags = 0;
 		if (mergestderr) {
 			flags |= NativeProcess.FLAG_MERGE_STDERR;
+		} else {
+			if (stderrconsumer == null) {
+				flags |= NativeProcess.FLAG_NULL_STDERR;
+			}
+		}
+		if (stdoutconsumer == null) {
+			flags |= NativeProcess.FLAG_NULL_STDOUT;
 		}
 		String[] cmdarray = cmd.toArray(ObjectUtils.EMPTY_STRING_ARRAY);
 		NativeProcess nativeproc = NativeProcess.startNativeProcess(null, cmdarray, workingdir, flags, env);
-		return new NativeSakerProcess(nativeproc);
+		return new NativeSakerProcess(nativeproc, stdoutconsumer, stderrconsumer);
 	}
 
 	private static final class NativeSakerProcess implements SakerProcess {
 		private final NativeProcess proc;
+		private ProcessIOConsumer standardOutputConsumer;
+		private ProcessIOConsumer standardErrorConsumer;
 
-		private NativeSakerProcess(NativeProcess nativeproc) {
+		private NativeSakerProcess(NativeProcess nativeproc, ProcessIOConsumer standardOutputConsumer,
+				ProcessIOConsumer standardErrorConsumer) {
 			this.proc = nativeproc;
+			this.standardOutputConsumer = standardOutputConsumer;
+			this.standardErrorConsumer = standardErrorConsumer;
 		}
 
 		@Override
@@ -97,9 +128,8 @@ public class NativeSakerProcessBuilder implements SakerProcessBuilder {
 		}
 
 		@Override
-		public void processIO(ProcessIOConsumer stdouthandler, ProcessIOConsumer stderrhandler)
-				throws IllegalStateException, IOException {
-			proc.processIO(toNativeIOConsumer(stdouthandler), toNativeIOConsumer(stderrhandler));
+		public void processIO() throws IllegalStateException, IOException {
+			proc.processIO(toNativeIOConsumer(standardOutputConsumer), toNativeIOConsumer(standardErrorConsumer));
 		}
 
 		@Override

@@ -13,7 +13,12 @@ public class NonConsumedStdOutAndErrMain {
 		}
 		pb.setCommand(Arrays.asList("java", "-jar", args[0]));
 		SakerProcess proc = pb.start();
-		proc.processIO(null, null);
-		System.out.println("NonConsumedStdOutAndErrMain.main() " + proc.waitFor());
+		proc.processIO();
+
+		int exitcode = proc.waitFor();
+		if (exitcode != 0) {
+			throw new AssertionError(exitcode);
+		}
+		System.out.println("Exit code: " + exitcode);
 	}
 }

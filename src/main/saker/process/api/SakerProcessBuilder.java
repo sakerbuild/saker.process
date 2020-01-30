@@ -19,7 +19,11 @@ public interface SakerProcessBuilder {
 
 	public SakerProcessBuilder setWorkingDirectory(SakerPath directorypath) throws InvalidPathFormatException;
 
-	public SakerProcessBuilder setMergeStandardError(boolean mergestderr);
+	public SakerProcessBuilder setStandardOutputConsumer(ProcessIOConsumer consumer);
+
+	public SakerProcessBuilder setStandardErrorConsumer(ProcessIOConsumer consumer);
+
+	public SakerProcessBuilder setStandardErrorMerge(boolean mergestderr);
 
 	public SakerProcess start() throws IllegalStateException, IOException;
 

@@ -16,6 +16,8 @@ public class DelayInterruptedMain {
 		CollectingProcessIOConsumer stdout = new CollectingProcessIOConsumer();
 		CollectingProcessIOConsumer stderr = new CollectingProcessIOConsumer();
 		pb.setCommand(Arrays.asList("java", "-jar", args[0]));
+		pb.setStandardOutputConsumer(stdout);
+		pb.setStandardErrorConsumer(stderr);
 
 		Thread mainthread = Thread.currentThread();
 		Thread interruptingthread = new Thread(() -> {
@@ -30,7 +32,7 @@ public class DelayInterruptedMain {
 		interruptingthread.start();
 		SakerProcess proc = pb.start();
 		try {
-			proc.processIO(stdout, stderr);
+			proc.processIO();
 			throw new AssertionError("Interruption unnoticed.");
 		} catch (InterruptedIOException e) {
 			//clear the flag so we can wait for
@@ -49,6 +51,10 @@ public class DelayInterruptedMain {
 		System.out.println("----- stderr -----");
 		System.out.println(stderr.getOutputString());
 		System.out.println("-----  end   -----");
-		System.out.println("DelayInterruptedMain.main() " + proc.waitFor());
+		int exitcode = proc.waitFor();
+		if (exitcode != 0) {
+			throw new AssertionError(exitcode);
+		}
+		System.out.println("Exit code: " + exitcode);
 	}
 }
