@@ -1,4 +1,0 @@
-proc.run=saker.process.main.run.RunProcessTaskFactory
-proc.arg.in.file=saker.process.main.args.InputFileArgumentTaskFactory
-proc.arg.out.file=saker.process.main.args.OutputFileArgumentTaskFactory
-proc.arg.join=saker.process.main.args.JoinArgumentTaskFactory
