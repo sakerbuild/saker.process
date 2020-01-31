@@ -187,6 +187,16 @@ export(
 				Resources: [**/*.java],
 			},
 			{
+				Directory: [platform/src/],
+				Resources: [**/*.cpp, **/*.h],
+				TargetDirectory: platform,
+			},
+			{
+				Directory: [$compile[javac][HeaderDirectory]],
+				Resources: [**/*.cpp, **/*.h],
+				TargetDirectory: platform/inc,
+			},
+			{
 				Files: LICENSE,
 				TargetDirectory: META-INF,
 			},
