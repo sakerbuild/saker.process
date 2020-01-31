@@ -53,6 +53,7 @@ public class Win32PlatformProcessFactory implements PlatformProcessFactory {
 			}
 			String envstr;
 			if (environment == null) {
+				//inherit env
 				envstr = null;
 			} else {
 				StringBuilder sb = new StringBuilder();

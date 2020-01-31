@@ -1,5 +1,6 @@
 package saker.process.impl;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -9,60 +10,69 @@ import java.util.concurrent.TimeUnit;
 
 import saker.build.file.path.SakerPath;
 import saker.build.file.provider.LocalFileProvider;
+import saker.build.thirdparty.saker.util.ObjectUtils;
+import saker.build.thirdparty.saker.util.StringUtils;
 import saker.build.thirdparty.saker.util.function.ThrowingRunnable;
 import saker.build.thirdparty.saker.util.io.IOUtils;
 import saker.build.thirdparty.saker.util.io.StreamUtils;
 import saker.build.thirdparty.saker.util.thread.ExceptionThread;
 import saker.process.api.ProcessIOConsumer;
 import saker.process.api.SakerProcess;
-import saker.process.api.SakerProcessBuilder;
 
-public class JavaSakerProcessBuilder implements SakerProcessBuilder {
-	private ProcessBuilder pb = new ProcessBuilder();
-	private ProcessIOConsumer standardErrorConsumer;
-	private ProcessIOConsumer standardOutputConsumer;
-
-	@Override
-	public SakerProcessBuilder setCommand(List<String> command) {
-		pb.command(command);
-		return this;
-	}
-
-	@Override
-	public Map<String, String> getEnvironment() {
-		return pb.environment();
-	}
-
-	@Override
-	public SakerProcessBuilder setWorkingDirectory(SakerPath directorypath) {
-		pb.directory(LocalFileProvider.toRealPath(directorypath).toFile());
-		return this;
-	}
-
-	@Override
-	public SakerProcessBuilder setStandardOutputConsumer(ProcessIOConsumer consumer) {
-		this.standardOutputConsumer = consumer;
-		return null;
-	}
-
-	@Override
-	public SakerProcessBuilder setStandardErrorMerge(boolean mergestderr) {
-		this.standardErrorConsumer = null;
-		pb.redirectErrorStream(mergestderr);
-		return this;
-	}
-
-	@Override
-	public SakerProcessBuilder setStandardErrorConsumer(ProcessIOConsumer consumer) {
-		this.standardErrorConsumer = consumer;
-		pb.redirectErrorStream(false);
-		return null;
-	}
+public class JavaSakerProcessBuilder extends SakerProcessBuilderBase {
+	//as in ProcessBulilder.Redirect.NULL_FILE from the JDK source code (9+)
+	private static final File NULL_FILE = new File(
+			(StringUtils.startsWithIgnoreCase(System.getProperty("os.name"), "windows") ? "NUL" : "/dev/null"));
 
 	@Override
 	public SakerProcess start() throws IOException {
+		List<String> cmd = this.command;
+		boolean mergestderr = this.mergeStandardError;
+		SakerPath workingdir = this.workingDirectory;
+		Map<String, String> env = this.environment;
+		ProcessIOConsumer stdoutconsumer = standardOutputConsumer;
+		ProcessIOConsumer stderrconsumer = standardErrorConsumer;
+		if (cmd == null) {
+			throw new IllegalStateException("Process command was not set.");
+		}
+		String[] cmdarray = cmd.toArray(ObjectUtils.EMPTY_STRING_ARRAY);
+		if (cmdarray.length == 0) {
+			throw new IllegalStateException("Empty process command specified.");
+		}
+
+		ProcessBuilder pb = new ProcessBuilder(cmdarray);
+		if (workingdir != null) {
+			pb.directory(LocalFileProvider.toRealPath(workingdir).toFile());
+		}
+		if (env != null) {
+			Map<String, String> pbenv = pb.environment();
+			pbenv.clear();
+			pbenv.putAll(env);
+		}
+		if (stdoutconsumer == null) {
+			//set process builder stdout redirection to NULL
+			pb.redirectOutput(NULL_FILE);
+		} else if (stdoutconsumer instanceof RedirectFileProcessIOConsumer) {
+			pb.redirectOutput(
+					LocalFileProvider.toRealPath(((RedirectFileProcessIOConsumer) stdoutconsumer).getPath()).toFile());
+			stdoutconsumer = null;
+		} else {
+			//default to Redirect.PIPE
+		}
+		if (mergestderr) {
+			pb.redirectErrorStream(true);
+		} else if (stderrconsumer == null) {
+			pb.redirectError(NULL_FILE);
+		} else if (stderrconsumer instanceof RedirectFileProcessIOConsumer) {
+			pb.redirectError(
+					LocalFileProvider.toRealPath(((RedirectFileProcessIOConsumer) stderrconsumer).getPath()).toFile());
+			stderrconsumer = null;
+		} else {
+			//default to Redirect.PIPE
+		}
+
 		Process proc = pb.start();
-		return new JavaSakerProcess(proc, standardOutputConsumer, standardErrorConsumer);
+		return new JavaSakerProcess(proc, stdoutconsumer, stderrconsumer);
 	}
 
 	private static final class JavaSakerProcess implements SakerProcess {
@@ -105,7 +115,13 @@ public class JavaSakerProcessBuilder implements SakerProcessBuilder {
 				InputStream stdoutstream = proc.getInputStream();
 				if (stderrstream == null) {
 					//the standard error is redirected
+					//if the standard output is redirected as well, the copyStreamToConsumers returns immediately
 					copyStreamToConsumers(stdoutstream, standardOutputConsumer);
+					return;
+				}
+				if (stdoutstream == null) {
+					//the standard output is redirected
+					copyStreamToConsumers(stderrstream, standardErrorConsumer);
 					return;
 				}
 
@@ -125,6 +141,7 @@ public class JavaSakerProcessBuilder implements SakerProcessBuilder {
 				try {
 					exc = errconsumer.joinTakeException();
 				} catch (InterruptedException e) {
+					errconsumer.interrupt();
 					exc = IOUtils.addExc(exc, e);
 				}
 				if (exc != null) {
@@ -141,6 +158,9 @@ public class JavaSakerProcessBuilder implements SakerProcessBuilder {
 		private static final byte[] THROWAWAY_CONSUME_BUFFER = new byte[1024 * 8];
 
 		private static void copyStreamToConsumers(InputStream procin, ProcessIOConsumer consumer) throws IOException {
+			if (procin == null) {
+				return;
+			}
 			if (consumer == null) {
 				StreamUtils.consumeStream(procin, THROWAWAY_CONSUME_BUFFER);
 				return;

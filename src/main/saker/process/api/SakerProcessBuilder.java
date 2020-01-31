@@ -21,6 +21,7 @@ public interface SakerProcessBuilder {
 
 	public SakerProcessBuilder setStandardErrorConsumer(ProcessIOConsumer consumer);
 
+	//doc: clears the error consumer
 	public SakerProcessBuilder setStandardErrorMerge(boolean mergestderr);
 
 	public SakerProcess start() throws IllegalStateException, IOException;

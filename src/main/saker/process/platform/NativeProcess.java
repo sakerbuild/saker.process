@@ -61,9 +61,7 @@ public abstract class NativeProcess implements Closeable {
 			if (standardErrorConsumer != null) {
 				throw new IllegalArgumentException("Cannot use merge and consume std error at the same time.");
 			}
-			if (standardOutputConsumer == null) {
-				throw new IllegalArgumentException("Cannot use merge std error without std output consumer.");
-			}
+			//allow merging std error without an output consumer
 		}
 		return PLATFORM_PROCESS_FACTORY.startProcess(exe, commands, workingdirectory, flags, environment,
 				standardOutputConsumer, standardErrorConsumer);
