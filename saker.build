@@ -52,7 +52,7 @@ platform_compile_win(
 						$javac[HeaderDirectory],
 					],
 					SimpleParameters: [ 
-						/O2, /GL, /MD 
+						/MD 
 					],
 				},
 			],
@@ -60,16 +60,15 @@ platform_compile_win(
 				Java: $javac[JavaSDK],
 			},
 			CompilerOptions: [
-				saker.msvc.coptions.preset(dll),
+				saker.msvc.coptions.preset([dll, optimize-release]),
 			],
 			Architecture: $target[arch],
 		)
 		$clink = saker.msvc.clink(
 			$ccompile,
 			LinkerOptions: [
-				saker.msvc.coptions.preset(dll),
+				saker.msvc.coptions.preset([dll, optimize-release]),
 			],
-			SimpleParameters: [ "/OPT:ICF", /LTCG ],
 			Identifier: "NativeProcess.{ $target[id] }",
 		)
 	}: [ $clink[OutputPath]  ]

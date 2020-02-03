@@ -425,7 +425,7 @@ JNIEXPORT jlong JNICALL Java_saker_process_platform_win32_Win32NativeProcess_nat
 	
 	jobject outputconsumerref = standardOutputConsumer == NULL ? NULL : env->NewGlobalRef(standardOutputConsumer);
 	jobject errorconsumerref = standardErrorConsumer == NULL ? NULL : env->NewGlobalRef(standardErrorConsumer);
-	//XXX error handle global reference creationg
+	//XXX error handle global reference creation
 
 	//notes: the CREATE_NO_WINDOW flag increases startup time SIGNIFICANTLY. like + 15 ms or so for simple processes
 	//       not specifying it creates a new console when used without one. e.g. in eclipse
