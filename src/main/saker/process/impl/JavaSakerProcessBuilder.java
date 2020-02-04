@@ -71,6 +71,9 @@ public class JavaSakerProcessBuilder extends SakerProcessBuilderBase {
 			//default to Redirect.PIPE
 		}
 
+		//redirect the std in to null, to signal that there's no input coming from there
+		pb.redirectInput(NULL_FILE);
+
 		Process proc = pb.start();
 		return new JavaSakerProcess(proc, stdoutconsumer, stderrconsumer);
 	}
@@ -111,6 +114,10 @@ public class JavaSakerProcessBuilder extends SakerProcessBuilderBase {
 		public void processIO() throws IllegalStateException, IOException {
 			//synchronize, only a single client can process the IO at once
 			synchronized (this) {
+				//close the stdin of the process as we currently don't handle it
+				//we already redirected to NULL, however, close it if non-null just in case.
+				IOUtils.close(proc.getOutputStream());
+
 				InputStream stderrstream = proc.getErrorStream();
 				InputStream stdoutstream = proc.getInputStream();
 				if (stderrstream == null) {
