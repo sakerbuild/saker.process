@@ -40,7 +40,11 @@ public abstract class NativeProcess implements Closeable {
 			//can happen if the classloader was reloaded, but still not garbage collected
 			//    or if any other implementation error occurs
 			//don't print stacktrace, as we don't need it, but print an error nonetheless
-			System.err.println("Failed to load native process library of saker.process-platform: " + e);
+			if ("test.dll".equals(System.mapLibraryName("test"))) {
+				//only print error if we were supposed to successfully load the lib
+				//if we don't implement native support for the current OS, don't warn.
+				System.err.println("Failed to load native process library of saker.process-platform: " + e);
+			}
 			loaded = false;
 			procfactory = null;
 		}
