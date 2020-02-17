@@ -7,7 +7,19 @@ pool:
 steps:
 - script: powershell $ProgressPreference='silentlyContinue';Invoke-WebRequest "https://api.nest.saker.build/bundle/download/saker.build-v$((Invoke-WebRequest "https://mirror.nest.saker.build/badges/saker.build/latest.txt" -UseBasicParsing).Content)" -OutFile saker.build.jar
   displayName: 'Download saker.build'
-- script: java -jar saker.build.jar -bd build test
-  displayName: 'Test'  
-- script: java -jar saker.build.jar -bd build export
+- script: java -jar saker.build.jar -bd build -trace pwd://build/build_test.trace test
+  displayName: 'Test'
+- task: PublishBuildArtifacts@1
+  condition: always()
+  displayName: 'Publish test trace'
+  inputs:
+    pathtoPublish: build/build_test.trace
+    artifactName: test_trace  
+- script: java -jar saker.build.jar -bd build -trace pwd://build/build_export.trace export
   displayName: 'Export'
+- task: PublishBuildArtifacts@1
+  condition: always()
+  displayName: 'Publish export trace'
+  inputs:
+    pathtoPublish: build/build_export.trace
+    artifactName: export_trace
