@@ -20,6 +20,9 @@ public abstract class SakerProcessBuilderBase implements SakerProcessBuilder {
 	protected ProcessIOConsumer standardOutputConsumer;
 	protected boolean mergeStandardError;
 
+	protected SakerPath standardInputFile;
+	protected boolean standardInputPipe;
+
 	@Override
 	public SakerProcessBuilder setCommand(List<String> command) {
 		Objects.requireNonNull(command, "command");
@@ -66,5 +69,20 @@ public abstract class SakerProcessBuilderBase implements SakerProcessBuilder {
 		this.standardErrorConsumer = consumer;
 		this.mergeStandardError = false;
 		return null;
+	}
+
+	@Override
+	public SakerProcessBuilder setStandardInputFile(SakerPath file) throws NullPointerException {
+		Objects.requireNonNull(file, "file");
+		this.standardInputFile = file;
+		this.standardInputPipe = false;
+		return this;
+	}
+
+	@Override
+	public SakerProcessBuilder setStandardInputPipe(boolean pipe) {
+		this.standardInputFile = null;
+		this.standardInputPipe = pipe;
+		return this;
 	}
 }

@@ -24,6 +24,10 @@ public interface SakerProcessBuilder {
 	//doc: clears the error consumer
 	public SakerProcessBuilder setStandardErrorMerge(boolean mergestderr);
 
+	public SakerProcessBuilder setStandardInputFile(SakerPath file) throws NullPointerException;
+
+	public SakerProcessBuilder setStandardInputPipe(boolean pipe);
+
 	public SakerProcess start() throws IllegalStateException, IOException;
 
 	public static SakerProcessBuilder create() {

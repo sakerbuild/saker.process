@@ -35,8 +35,11 @@ public class NativeSakerProcessBuilder extends SakerProcessBuilderBase {
 		if (mergestderr) {
 			flags |= NativeProcess.FLAG_MERGE_STDERR;
 		}
+		if (standardInputPipe) {
+			flags |= NativeProcess.FLAG_PIPE_STDIN;
+		}
 		NativeProcess nativeproc = NativeProcess.startNativeProcess(null, cmdarray, workingdir, flags, env,
-				toNativeIOConsumer(stdoutconsumer), toNativeIOConsumer(stderrconsumer));
+				toNativeIOConsumer(stdoutconsumer), toNativeIOConsumer(stderrconsumer), standardInputFile);
 		return new NativeSakerProcess(nativeproc, stdoutconsumer, stderrconsumer);
 	}
 

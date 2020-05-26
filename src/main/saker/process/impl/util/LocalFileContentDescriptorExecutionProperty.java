@@ -26,6 +26,8 @@ import saker.build.file.provider.LocalFileProvider;
 import saker.build.runtime.execution.ExecutionContext;
 import saker.build.runtime.execution.ExecutionProperty;
 
+@Deprecated
+//TODO use saker.standard 0.8.2
 public class LocalFileContentDescriptorExecutionProperty
 		implements ExecutionProperty<ContentDescriptor>, Externalizable {
 	private static final long serialVersionUID = 1L;

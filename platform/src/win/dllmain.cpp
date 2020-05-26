@@ -147,7 +147,8 @@ public:
 	HANDLE stdOutPipeOut;
 	HANDLE stdErrPipeIn;
 	HANDLE stdErrPipeOut;
-	HANDLE interruptEvent;
+	HANDLE stdInPipeIn;
+	HANDLE stdInPipeOut;
 	jint flags;
 	
 	jobject standardOutputConsumer; 
@@ -155,6 +156,7 @@ public:
 	
 	HANDLE stdOutFile = INVALID_HANDLE_VALUE;
 	HANDLE stdErrFile = INVALID_HANDLE_VALUE;
+	HANDLE stdInFile = INVALID_HANDLE_VALUE;
 	
 	NativeProcess(
 			const PROCESS_INFORMATION& pi, 
@@ -163,8 +165,9 @@ public:
 			HANDLE stdoutpipeout,
 			HANDLE stderrpipein, 
 			HANDLE stderrpipeout,
+			HANDLE stdinpipein,
+			HANDLE stdinpipeout,
 			jint flags,
-			HANDLE interruptevent,
 			jobject standardOutputConsumer,
 			jobject standardErrorConsumer)
 		: 
@@ -174,7 +177,8 @@ public:
 			stdOutPipeOut(stdoutpipeout),
 			stdErrPipeIn(stderrpipein),
 			stdErrPipeOut(stderrpipeout),
-			interruptEvent(interruptevent),
+			stdInPipeIn(stdinpipein),
+			stdInPipeOut(stdinpipeout),
 			flags(flags),
 			standardOutputConsumer(standardOutputConsumer),
 			standardErrorConsumer(standardErrorConsumer) {
@@ -210,18 +214,73 @@ struct HandleCloser {
 		}
 	}
 };
+struct JniGlobalRef {
+	JNIEnv *env;
+	jobject ref;
+
+	JniGlobalRef(JNIEnv *env, jobject ref = NULL) :
+			env(env), ref(ref) {
+	}
+	JniGlobalRef(const JniGlobalRef&) = delete;
+	JniGlobalRef(JniGlobalRef&&) = delete;
+
+	~JniGlobalRef() {
+		if (ref != NULL) {
+			env->DeleteGlobalRef(ref);
+		}
+	}
+};
+
+struct NulFileHandle {
+	HandleCloser handle;
+
+	NulFileHandle() {
+		SECURITY_ATTRIBUTES secattrs_inherit_handle = { };
+		secattrs_inherit_handle.nLength = sizeof(SECURITY_ATTRIBUTES);
+		secattrs_inherit_handle.bInheritHandle = TRUE;
+
+		HANDLE h = CreateFileW(
+				L"NUL",
+				GENERIC_READ | GENERIC_READ,
+				FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+				&secattrs_inherit_handle,
+				OPEN_EXISTING,
+				FILE_ATTRIBUTE_NORMAL,
+				NULL);
+		this->handle = h;
+	}
+
+	operator HANDLE() const {
+		return handle.handle;
+	}
+};
+static const NulFileHandle NUL_FILE_HANDLE;
 
 #define PIPE_NAME_PREFIX "\\\\.\\pipe\\"
 
-static HANDLE createNamedPipeWithName(const char* pipename) {
+static HANDLE createNamedPipeWithName(const char* pipename, LPSECURITY_ATTRIBUTES lpSecurityAttributes) {
 	return CreateNamedPipe(
+			pipename,
+			PIPE_ACCESS_INBOUND | FILE_FLAG_FIRST_PIPE_INSTANCE | FILE_FLAG_OVERLAPPED,
+			PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
+			1,
+			16 * 1024,
+			16 * 1024,
+			INFINITE,
+			lpSecurityAttributes
+		);
+}
+static HANDLE createNamedPipeWithName(const char* pipename) {
+	return createNamedPipeWithName(pipename, NULL);
+}
+static HANDLE openPipeWrite(const char* pipename, LPSECURITY_ATTRIBUTES lpSecurityAttributes) {
+	return CreateFile(
 		pipename,
-		PIPE_ACCESS_INBOUND | FILE_FLAG_FIRST_PIPE_INSTANCE | FILE_FLAG_OVERLAPPED,
-		PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
-		1,
-		16 * 1024,
-		16 * 1024,
-		INFINITE,
+		GENERIC_WRITE,
+		0,
+		lpSecurityAttributes,
+		OPEN_EXISTING,
+		0,
 		NULL
 	);
 }
@@ -230,19 +289,12 @@ static HANDLE openPipeWrite(const char* pipename) {
 	SECURITY_ATTRIBUTES secattrs_inherit_handle = {};
 	secattrs_inherit_handle.nLength = sizeof(SECURITY_ATTRIBUTES);
 	secattrs_inherit_handle.bInheritHandle = TRUE;
-	
-	return CreateFile(
-		pipename,
-		GENERIC_WRITE,
-		0,
-		&secattrs_inherit_handle,
-		OPEN_EXISTING,
-		0,
-		NULL
-	);
+
+	return openPipeWrite(pipename, &secattrs_inherit_handle);
 }
 
 #define FLAG_IS_MERGE_STDERR(flags) ((flags & Java_const_saker_process_platform_NativeProcess_FLAG_MERGE_STDERR) == Java_const_saker_process_platform_NativeProcess_FLAG_MERGE_STDERR)
+#define FLAG_IS_PIPE_STDIN(flags) ((flags & Java_const_saker_process_platform_NativeProcess_FLAG_PIPE_STDIN) == Java_const_saker_process_platform_NativeProcess_FLAG_PIPE_STDIN)
 
 JNIEXPORT jlong JNICALL Java_saker_process_platform_win32_Win32NativeProcess_native_1startProcess(
 	JNIEnv* env, 
@@ -252,12 +304,12 @@ JNIEXPORT jlong JNICALL Java_saker_process_platform_win32_Win32NativeProcess_nat
 	jstring workingdirectory,
 	jint flags, 
 	jstring pipeid,
-	jlong interrupteventptr,
 	jstring envstr,
 	jobject standardOutputConsumer, 
 	jobject standardErrorConsumer, 
 	jstring stdoutfilepath, 
-	jstring stderrfilepath
+	jstring stderrfilepath,
+	jstring stdinfilepath
 ) {
 	PROCESS_INFORMATION pi;
 	ZeroMemory(&pi, sizeof(pi));
@@ -291,15 +343,27 @@ JNIEXPORT jlong JNICALL Java_saker_process_platform_win32_Win32NativeProcess_nat
 	HandleCloser stdoutwritepipe;
 	HandleCloser stderrnamedpipe;
 	HandleCloser stderrwritepipe;
+	HandleCloser stdinnamedpipe;
+	HandleCloser stdinwritepipe;
 	
 	HandleCloser stdoutfilehandlecloser;
 	HandleCloser stderrfilehandlecloser;
+	HandleCloser stdinfilehandlecloser;
 	
 	HANDLE stdoutpipein = INVALID_HANDLE_VALUE;
 	HANDLE stdoutpipeout = INVALID_HANDLE_VALUE;
 	HANDLE stderrpipein = INVALID_HANDLE_VALUE;
 	HANDLE stderrpipeout = INVALID_HANDLE_VALUE;
+	HANDLE stdinpipein = INVALID_HANDLE_VALUE;
+	HANDLE stdinpipeout = INVALID_HANDLE_VALUE;
 	
+	//set the defaults to the NUL file
+	//so the writes won't fail in the child process
+	si.hStdOutput = NUL_FILE_HANDLE;
+	si.hStdError = NUL_FILE_HANDLE;
+	si.hStdInput = NUL_FILE_HANDLE;
+	si.dwFlags |= STARTF_USESTDHANDLES;
+
 	if (standardOutputConsumer != NULL) {
 		stdoutnamedpipe = createNamedPipeWithName(pipename);
 		if(stdoutnamedpipe.handle == INVALID_HANDLE_VALUE){
@@ -322,16 +386,17 @@ JNIEXPORT jlong JNICALL Java_saker_process_platform_win32_Win32NativeProcess_nat
 		secattrs_inherit_handle.nLength = sizeof(SECURITY_ATTRIBUTES);
 		secattrs_inherit_handle.bInheritHandle = TRUE;
 		
-	    HANDLE h = CreateFileW(fname.c_str(),
+	    HANDLE h = CreateFileW(
+			fname.c_str(),
 	        GENERIC_WRITE,
 	        FILE_SHARE_READ,
 	        &secattrs_inherit_handle,
-	        OPEN_ALWAYS,
+			OPEN_ALWAYS,
 	        FILE_ATTRIBUTE_NORMAL,
 	        NULL 
         );
         if (h == INVALID_HANDLE_VALUE) {
-        	failure(env, "stdout CreateFile", GetLastError());
+        	failure(env, "Failed to open standard output file: (CreateFile)", GetLastError());
 			return 0;
         }
         stdoutfilehandlecloser = h;
@@ -373,16 +438,17 @@ JNIEXPORT jlong JNICALL Java_saker_process_platform_win32_Win32NativeProcess_nat
 		secattrs_inherit_handle.nLength = sizeof(SECURITY_ATTRIBUTES);
 		secattrs_inherit_handle.bInheritHandle = TRUE;
 		
-	    HANDLE h = CreateFileW(fname.c_str(),
+	    HANDLE h = CreateFileW(
+			fname.c_str(),
 	        GENERIC_WRITE,
 	        FILE_SHARE_READ,
 	        &secattrs_inherit_handle,
-	        OPEN_ALWAYS,
+			OPEN_ALWAYS,
 	        FILE_ATTRIBUTE_NORMAL,
 	        NULL 
         );
         if (h == INVALID_HANDLE_VALUE) {
-        	failure(env, "stderr CreateFile", GetLastError());
+        	failure(env, "Failed to open standard error file: (CreateFile)", GetLastError());
 			return 0;
         }
         stderrfilehandlecloser = h;
@@ -390,24 +456,47 @@ JNIEXPORT jlong JNICALL Java_saker_process_platform_win32_Win32NativeProcess_nat
         SetEndOfFile(h);
         si.hStdError = h;
 	}
-	
-	si.hStdInput = INVALID_HANDLE_VALUE;
-	si.dwFlags |= STARTF_USESTDHANDLES;
+	if (FLAG_IS_PIPE_STDIN(flags)) {
+		failureType(env, "java/lang/UnsupportedOperationException", "Standard input piping unsupported.", NULL);
+		return 0;
+	} else if (stdinfilepath != NULL) {
+		std::wstring fname = Java_To_WStr(env, stdinfilepath);
 
+		SECURITY_ATTRIBUTES secattrs_inherit_handle = {};
+		secattrs_inherit_handle.nLength = sizeof(SECURITY_ATTRIBUTES);
+		secattrs_inherit_handle.bInheritHandle = TRUE;
+
+		HANDLE h = CreateFileW(
+			fname.c_str(),
+			GENERIC_READ,
+			FILE_SHARE_READ,
+			&secattrs_inherit_handle,
+			OPEN_EXISTING,
+			FILE_ATTRIBUTE_NORMAL,
+			NULL
+		);
+		if (h == INVALID_HANDLE_VALUE) {
+			failure(env, "Failed to open standard input file: (CreateFile)", GetLastError());
+			return 0;
+		}
+		stdinfilehandlecloser = h;
+		si.hStdInput = h;
+	}
+	
 	std::wstring modname = Java_To_WStr(env, exe);
 	std::wstring workdir = Java_To_WStr(env, workingdirectory);
 	std::wstring environmentwstr = Java_To_WStr(env, envstr);
- 	jsize cmdlen = commands == NULL ? 0 : env->GetArrayLength(commands);
- 	std::wstring cmdstr;
- 	
- 	//include the executable as the zeroth argument
+	jsize cmdlen = commands == NULL ? 0 : env->GetArrayLength(commands);
+	std::wstring cmdstr;
+
+	//include the executable as the zeroth argument
  	if (exe != NULL) {
  		ArgvQuote(modname, cmdstr, false);
  	}
- 	for(jsize i = 0; i < cmdlen; ++i){
+	for (jsize i = 0; i < cmdlen; ++i) {
  		jstring c = static_cast<jstring>(env->GetObjectArrayElement(commands, i));
  		std::wstring cstr = Java_To_WStr(env, c);
- 		if(cmdstr.length() > 0){
+		if (cmdstr.length() > 0) {
 			cmdstr.push_back(L' ');
 		}
  		ArgvQuote(cstr, cmdstr, false);
@@ -423,20 +512,60 @@ JNIEXPORT jlong JNICALL Java_saker_process_platform_win32_Win32NativeProcess_nat
 	
 	LPVOID envblock = envstr == NULL ? NULL : (void*) environmentwstr.c_str();
 	
-	jobject outputconsumerref = standardOutputConsumer == NULL ? NULL : env->NewGlobalRef(standardOutputConsumer);
-	jobject errorconsumerref = standardErrorConsumer == NULL ? NULL : env->NewGlobalRef(standardErrorConsumer);
-	//XXX error handle global reference creation
+	JniGlobalRef outputconsumerrefcloser(env);
+	JniGlobalRef errorconsumerrefcloser(env);
 
-	//notes: the CREATE_NO_WINDOW flag increases startup time SIGNIFICANTLY. like + 15 ms or so for simple processes
-	//       not specifying it creates a new console when used without one. e.g. in eclipse
-	//       the DETACHED_PROCESS solves the console creation, and the startup time
+	if (standardOutputConsumer != NULL) {
+		outputconsumerrefcloser.ref = env->NewGlobalRef(standardOutputConsumer);
+		if (outputconsumerrefcloser.ref == NULL) {
+			javaException(env, "java/lang/OutOfMemoryError",
+					"Failed to create JNI global reference.");
+			return 0;
+		}
+	}
+	if (standardErrorConsumer != NULL) {
+		errorconsumerrefcloser.ref = env->NewGlobalRef(standardErrorConsumer);
+		if (errorconsumerrefcloser.ref == NULL) {
+			javaException(env, "java/lang/OutOfMemoryError",
+					"Failed to create JNI global reference.");
+			return 0;
+		}
+	}
+
+	//about the console management of the subprocess
+	//if the current process has no console, then we need to
+	// specify CREATE_NO_WINDOW so the child doesn't arbitrarily create
+	// sub consoles, and they won't just pop up randomly during builds
+	//However, the CREATE_NO_WINDOW flag adds like +15 ms to the startup time
+	// of the process, so we don't want to use it if we can
+	//The flag DETACHED_PROCESS is not suitable, as that allows
+	// the child process to create consoles and pop them up randomly
+	//So:
+	// if the current process already has a console
+	// then we don't specify any other flags to avoid the
+	// time overhead of CREATE_NO_WINDOW
+	//
+	// if the current process HAS a console, then
+	// we inherit form that and the subprocess can start quickly
+	//
+	//the processHasConsole variable is stored statically so we don't query it
+	// for every process creation
+	// we expect that it doesn't get modified during the lifetime of the process
+	// as AllocConsole and FreeConsole calls usually occurr during initialization
+	// and destruction
+	static bool processHasConsole = GetConsoleWindow() != NULL;
+	DWORD creationFlags = CREATE_UNICODE_ENVIRONMENT;
+	if (!processHasConsole) {
+		creationFlags |= CREATE_NO_WINDOW;
+	}
+
 	if (!CreateProcessW(
 			modnamestr,			// exe path
 			cmd,				// Command line
 			NULL,       		// process security attributes
 			NULL,       		// thread security attributes
 			TRUE,      			// handle inheritance
-			DETACHED_PROCESS | CREATE_UNICODE_ENVIRONMENT,	// creation flags
+			creationFlags,	// creation flags
 			envblock,				// environment block
 			workingdirstr,		// working directory 
 			&si,        		// STARTUPINFO
@@ -455,22 +584,30 @@ JNIEXPORT jlong JNICALL Java_saker_process_platform_win32_Win32NativeProcess_nat
 		stdoutpipein, 
 		stdoutpipeout, 
 		stderrpipein, 
-		stderrpipeout, 
+		stderrpipeout,
+		stdinpipein,
+		stdinpipeout,
 		flags, 
-		reinterpret_cast<HANDLE>(interrupteventptr),
-		outputconsumerref,
-		errorconsumerref
+		outputconsumerrefcloser.ref,
+		errorconsumerrefcloser.ref
 	);
 	
+	outputconsumerrefcloser.ref = NULL;
+	errorconsumerrefcloser.ref = NULL;
+
 	proc->stdOutFile = stdoutfilehandlecloser.handle;
 	proc->stdErrFile = stderrfilehandlecloser.handle;
+	proc->stdInFile = stdinfilehandlecloser.handle;
 	
 	stdoutnamedpipe.handle = INVALID_HANDLE_VALUE;
 	stdoutwritepipe.handle = INVALID_HANDLE_VALUE;
 	stderrnamedpipe.handle = INVALID_HANDLE_VALUE;
 	stderrwritepipe.handle = INVALID_HANDLE_VALUE;
+	stdinnamedpipe.handle = INVALID_HANDLE_VALUE;
+	stdinwritepipe.handle = INVALID_HANDLE_VALUE;
 	stdoutfilehandlecloser.handle = INVALID_HANDLE_VALUE;
 	stderrfilehandlecloser.handle = INVALID_HANDLE_VALUE;
+	stdinfilehandlecloser.handle = INVALID_HANDLE_VALUE;
 
 	return reinterpret_cast<jlong>(proc);
 }
@@ -531,12 +668,8 @@ struct PipeHandler {
 	}
 	
 	bool initRead() {
-		if (ioState == IO_STATE_PENDING) {
+		if (ioState != IO_STATE_NONE) {
 			SetLastError(ERROR_IO_PENDING);
-			return false;
-		}
-		if (ioState == IO_STATE_CANCELLED) {
-			SetLastError(ERROR_INVALID_HANDLE);
 			return false;
 		}
 		BOOL success = ReadFile(pipein, bufaddress, bufcapacity, NULL, &overlapped);
@@ -551,13 +684,27 @@ struct PipeHandler {
 		return true;
 	}
 	
-	bool cancelIO(){
+	bool isIOPending() const {
+		return ioState != IO_STATE_NONE;
+	}
+	bool isIOCancelled() const {
+		return ioState == IO_STATE_CANCELLED;
+	}
+
+	bool cancelIO() {
+		if (ioState == IO_STATE_NONE) {
+			return true;
+		}
 		if (ioState == IO_STATE_CANCELLED) {
 			return true;
 		}
 		if (!CancelIoEx(pipein, &overlapped)) {
+			if (GetLastError() == ERROR_NOT_FOUND) {
+				ioState = IO_STATE_NONE;
+			}
 			return false;
 		}
+		//successful cancel, will need to wait for it
 		ioState = IO_STATE_CANCELLED;
 		return true;
 	}
@@ -571,11 +718,19 @@ struct PipeHandler {
 			ioState = IO_STATE_NONE;
 			return TRUE;
 		}
+		DWORD lasterror = GetLastError();
+		if (lasterror == ERROR_OPERATION_ABORTED) {
+			//the operation was aborted
+			//return false, but also reset the state as this error signals the cancellation of the operation
+			ioState = IO_STATE_NONE;
+			return FALSE;
+		}
 		return FALSE;
 	}
 	
 	void processFinished() {
 		pipeInCloser = *pipeinptr;
+		BOOL discres = DisconnectNamedPipe(pipein);
 		CloseHandle(*pipeoutptr);
 		
 		*pipeinptr = INVALID_HANDLE_VALUE;
@@ -585,25 +740,21 @@ struct PipeHandler {
 	~PipeHandler() {
 		//wait for the overlapped result before releasing the memory of it
 		//can't really handle the result of the GetOverlappedResult call
-		switch(ioState) {
+		switch (ioState) {
 			case IO_STATE_CANCELLED:{
 				DWORD read;
 				GetOverlappedResult(pipein, &overlapped, &read, TRUE);
 				break;
 			}
 			case IO_STATE_PENDING: {
-				if (CancelIoEx(pipein, &overlapped)) {
+				BOOL cancelres = CancelIoEx(pipein, &overlapped);
+				if (cancelres || GetLastError() != ERROR_NOT_FOUND) {
 					DWORD read;
 					GetOverlappedResult(pipein, &overlapped, &read, TRUE);
-					break;
 				}
 				break;
 			}
 		}
-	}
-	
-	bool isIOPending() const {
-		return ioState != IO_STATE_NONE;
 	}
 	
 private:
@@ -632,7 +783,8 @@ JNIEXPORT void JNICALL Java_saker_process_platform_win32_Win32NativeProcess_nati
 	jclass clazz, 
 	jlong nativeptr, 
 	jobject stdoutbytedirectbuffer,
-	jobject stderrbytedirectbuffer
+	jobject stderrbytedirectbuffer,
+	jlong interrupteventptr
 ) {
 	NativeProcess* proc = reinterpret_cast<NativeProcess*>(nativeptr);
 	
@@ -673,7 +825,7 @@ JNIEXPORT void JNICALL Java_saker_process_platform_win32_Win32NativeProcess_nati
 	
 	const int WAITS_OFFSET = 2;
 	DWORD waitcount = WAITS_OFFSET;
-	HANDLE waits[4] = { proc->procInfo.hProcess, proc->interruptEvent,  };
+	HANDLE waits[4] = { proc->procInfo.hProcess, reinterpret_cast<HANDLE>(interrupteventptr),  };
 	for (int i = 0; i < pipecount; ++i) {
 		if (!pipes[i].initRead()) {
 			failure(env, "ReadFile", GetLastError());
@@ -685,40 +837,45 @@ JNIEXPORT void JNICALL Java_saker_process_platform_win32_Win32NativeProcess_nati
 	bool interrupted = false;
 	while (true) {
 		DWORD waitres = WaitForMultipleObjects(waitcount, waits, FALSE, INFINITE);
-		switch(waitres) {
+		switch (waitres) {
 			case WAIT_OBJECT_0: {
 				//process finished
 				
 				for (int i = 0; i < pipecount; ++i) {
 					PipeHandler& pipe = pipes[i];
 					pipe.processFinished();
+				}
+				for (int i = 0; i < pipecount; ++i) {
+					PipeHandler& pipe = pipes[i];
 					
 					DWORD read = 0;
-					if (!pipe.getOverlappedIOResult(&read, TRUE)) {
+					BOOL overlappedres = pipe.getOverlappedIOResult(&read, TRUE);
+					if (read > 0 && pipe.processor != NULL){
+						env->CallStaticVoidMethod(clazz, outputnotifymethod, pipe.bytebuffer, read, pipe.processor);
+						if (env->ExceptionCheck()) {
+							return;
+						}
+					}
+					if(!overlappedres) {
 						DWORD lasterror = GetLastError();
-						if (lasterror != ERROR_BROKEN_PIPE){
+						if (lasterror != ERROR_BROKEN_PIPE && lasterror != ERROR_PIPE_NOT_CONNECTED){
 							failure(env, "GetOverlappedResult", lasterror);
 							return;
 						}
-					} else {
-						if(read > 0) {
-							if (pipe.processor != NULL){
-								env->CallStaticVoidMethod(clazz, outputnotifymethod, pipe.bytebuffer, read, pipe.processor);
-								if (env->ExceptionCheck()) {
-									return;
-								}
+					}
+					if (read > 0 && pipe.processor != NULL) {
+						//read the remaining data
+						while (true) {
+							if (!ReadFile(pipe.pipein, pipe.bufaddress, pipe.bufcapacity, &read, NULL)) {
+								break;
 							}
-							while (ReadFile(pipe.pipein, pipe.bufaddress, pipe.bufcapacity, &read, NULL)) {
-								if (read <= 0){
-									break;
-								}
-								
-								if (pipe.processor != NULL){
-									env->CallStaticVoidMethod(clazz, outputnotifymethod, pipe.bytebuffer, read, pipe.processor);
-									if (env->ExceptionCheck()) {
-										return;
-									}
-								}
+							if (read <= 0){
+								break;
+							}
+
+							env->CallStaticVoidMethod(clazz, outputnotifymethod, pipe.bytebuffer, read, pipe.processor);
+							if (env->ExceptionCheck()) {
+								return;
 							}
 						}
 					}
@@ -740,46 +897,78 @@ JNIEXPORT void JNICALL Java_saker_process_platform_win32_Win32NativeProcess_nati
 				bool hadcancelfail = false;
 				//we've been interrupted. cancel any pending IO, check process exit, and if we're not finished,
 				//throw the interrupted exception
+
+				//cancel all IO
 				for (int i = 0; i < pipecount; ++i) {
 					PipeHandler& pipe = pipes[i];
 					if (!pipe.isIOPending()) {
 						continue;
 					}
-					if (!pipe.cancelIO()) {
-						//failed to cancel the IO.
-						//do not take the interrupt request into account
-						//do not reinterrupt, as we would get into a loop
-						//set internal interrupted flag so we can handle when the IO completes
-						interrupted = true;
-						hadcancelfail = true;
-						continue;	
+					if (pipe.cancelIO()) {
+						continue;
 					}
-					//IO cancellation succeeded
-					//wait for the overlapped request to complete as we may not free it before returning 
+					//failed to cancel the IO.
+					if (GetLastError() == ERROR_NOT_FOUND) {
+						//the operation was not found
+						continue;
+					}
+
+					//check if we can get the overlapped result without waiting
 					DWORD read = 0;
-					if (!pipe.getOverlappedIOResult(&read, TRUE)) {
-						DWORD lasterror = GetLastError();
-						if(lasterror == ERROR_OPERATION_ABORTED){
-							//the request was cancelled properly, without any read bytes
-							continue;
-						}
-						if (lasterror == ERROR_IO_PENDING) {
-							//shouldn't really happen, check anyway
-							//we can't throw the exception, continue the loop
-							interrupted = true;
-							hadcancelfail = true;
-							continue;
-						}
-						//unrecognized error
-						failure(env, "GetOverlappedResult", lasterror);
-						return;
-					}
+					BOOL overlappedres = pipe.getOverlappedIOResult(&read, FALSE);
 					if (read > 0 && pipe.processor != NULL){
 						env->CallStaticVoidMethod(clazz, outputnotifymethod, pipe.bytebuffer, read, pipe.processor);
 						if (env->ExceptionCheck()) {
 							return;
 						}
 					}
+					if (overlappedres || GetLastError() == ERROR_OPERATION_ABORTED) {
+						//the overlapped IO succeeded, or cancelled successfully
+						continue;
+					}
+					//do not take the interrupt request into account
+					//do not reinterrupt, as we would get into a loop
+					//set internal interrupted flag so we can handle when the IO completes
+					interrupted = true;
+					hadcancelfail = true;
+					continue;
+				}
+				for (int i = 0; i < pipecount; ++i) {
+					PipeHandler& pipe = pipes[i];
+					if (!pipe.isIOCancelled()) {
+						//do not attempt to wait for IO that is not cancelled
+						continue;
+					}
+					//the IO was successfully cancelled. wait for it
+					//wait for the overlapped request to complete as we may not free it before returning 
+					DWORD read = 0;
+					BOOL overlappedres = pipe.getOverlappedIOResult(&read, TRUE);
+					if (read > 0 && pipe.processor != NULL){
+						env->CallStaticVoidMethod(clazz, outputnotifymethod, pipe.bytebuffer, read, pipe.processor);
+						if (env->ExceptionCheck()) {
+							return;
+						}
+					}
+					if (overlappedres) {
+						//successful cancellation
+						continue;
+					}
+					DWORD lasterror = GetLastError();
+					if (lasterror == ERROR_OPERATION_ABORTED) {
+						//the request was cancelled properly
+						continue;
+					}
+					if (lasterror == ERROR_IO_PENDING) {
+						//shouldn't really happen, check anyway
+						//failed to cancel the request, still running
+						interrupted = true;
+						hadcancelfail = true;
+						continue;
+					}
+
+					//unrecognized error
+					failure(env, "GetOverlappedResult", lasterror);
+					return;
 				}
 				if (hadcancelfail) {
 					continue;
@@ -793,14 +982,20 @@ JNIEXPORT void JNICALL Java_saker_process_platform_win32_Win32NativeProcess_nati
 					//a pipe was notified, a read finished
 					PipeHandler& pipe = pipes[waitres - (WAIT_OBJECT_0 + WAITS_OFFSET)];
 					DWORD read = 0;
-					if (!pipe.getOverlappedIOResult(&read, FALSE)) {
-						failure(env, "GetOverlappedResult", GetLastError());
-						return;
-					}
+					BOOL overlappedres = pipe.getOverlappedIOResult(&read, FALSE);
 					
 					if (read > 0 && pipe.processor != NULL) {
 						env->CallStaticVoidMethod(clazz, outputnotifymethod, pipe.bytebuffer, read, pipe.processor);
 						if (env->ExceptionCheck()) {
+							return;
+						}
+					}
+
+					if (!overlappedres) {
+						if (GetLastError() == ERROR_OPERATION_ABORTED) {
+							//cancelled IO
+						}else{
+							failure(env, "GetOverlappedResult", GetLastError());
 							return;
 						}
 					}
@@ -850,7 +1045,8 @@ JNIEXPORT jobject JNICALL Java_saker_process_platform_win32_Win32NativeProcess_n
 	JNIEnv* env, 
 	jclass clazz, 
 	jlong nativeptr, 
-	jlong timeoutmillis
+	jlong timeoutmillis,
+	jlong interrupteventptr
 ) {
 	NativeProcess* proc = reinterpret_cast<NativeProcess*>(nativeptr);
 	DWORD waitmillis = timeoutmillis == -1 ? INFINITE : timeoutmillis;
@@ -865,7 +1061,7 @@ JNIEXPORT jobject JNICALL Java_saker_process_platform_win32_Win32NativeProcess_n
 		//wait for the process to complete
 	}
 	
-	HANDLE waits[] = { proc->procInfo.hProcess, proc->interruptEvent };
+	HANDLE waits[] = { proc->procInfo.hProcess, reinterpret_cast<HANDLE>(interrupteventptr) };
 	while(true) {
 		DWORD waitres = WaitForMultipleObjects(2, waits, FALSE, waitmillis);
 		switch (waitres) {
@@ -954,11 +1150,20 @@ JNIEXPORT void JNICALL Java_saker_process_platform_win32_Win32NativeProcess_nati
 	if (proc->stdErrPipeOut != INVALID_HANDLE_VALUE && proc->stdErrPipeOut != proc->stdOutPipeOut) {
 		CloseHandle(proc->stdErrPipeOut);
 	}
+	if (proc->stdInPipeIn != INVALID_HANDLE_VALUE){
+		CloseHandle(proc->stdInPipeIn);
+	}
+	if (proc->stdInPipeOut != INVALID_HANDLE_VALUE){
+		CloseHandle(proc->stdInPipeOut);
+	}
 	if (proc->stdOutFile != INVALID_HANDLE_VALUE) {
 		CloseHandle(proc->stdOutFile);
 	}
 	if (proc->stdErrFile != INVALID_HANDLE_VALUE) {
 		CloseHandle(proc->stdErrFile);
+	}
+	if (proc->stdInFile != INVALID_HANDLE_VALUE) {
+		CloseHandle(proc->stdInFile);
 	}
 	if (proc->standardOutputConsumer != NULL) {
 		env->DeleteGlobalRef(proc->standardOutputConsumer);
@@ -973,13 +1178,21 @@ JNIEXPORT jlong JNICALL Java_saker_process_platform_win32_Win32NativeProcess_nat
 	JNIEnv* env, 
 	jclass clazz
 ) {
-	return reinterpret_cast<jlong>(CreateEvent(NULL, FALSE, FALSE, NULL));
+	HANDLE eventh = CreateEvent(NULL, FALSE, FALSE, NULL);
+	if(eventh == NULL) {
+		failureType(env, "java/lang/RuntimeException", "Failed to create interrupt event.", GetLastError());
+		return NULL;
+	}
+	return reinterpret_cast<jlong>(eventh);
 }
 JNIEXPORT void JNICALL Java_saker_process_platform_win32_Win32NativeProcess_native_1closeInterruptEvent(
 	JNIEnv* env, 
 	jclass clazz, 
 	jlong interrupteventptr
 ) {
+	if (interrupteventptr == NULL) {
+		return;
+	}
 	HANDLE eventh = reinterpret_cast<HANDLE>(interrupteventptr);
 	CloseHandle(eventh);
 }

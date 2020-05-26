@@ -18,7 +18,7 @@ public interface SakerProcess extends Closeable {
 	 * Releases the native resources for this process.
 	 * <p>
 	 * <b>Note</b>: closing doesn't destroy the created process. It only releases the native resources that are used to
-	 * deal with the started process. If you need to destroy the process, you shoul do that before closing this
+	 * deal with the started process. If you need to destroy the process, you should do that before closing this
 	 * instance.
 	 * 
 	 * @throws IOException

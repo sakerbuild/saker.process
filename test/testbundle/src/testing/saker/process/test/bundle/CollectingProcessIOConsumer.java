@@ -18,4 +18,7 @@ public class CollectingProcessIOConsumer implements ProcessIOConsumer {
 		return out.toString();
 	}
 
+	public byte[] getOutputBytes() {
+		return out.toByteArray();
+	}
 }
