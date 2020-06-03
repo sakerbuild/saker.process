@@ -24,6 +24,19 @@ public class JavaSakerProcessBuilder extends SakerProcessBuilderBase {
 	private static final File NULL_FILE = new File(
 			(StringUtils.startsWithIgnoreCase(System.getProperty("os.name"), "windows") ? "NUL" : "/dev/null"));
 
+	/**
+	 * @see Process#getInputStream()
+	 */
+	private static final int FLAG_HAS_STDIN = 1 << 0;
+	/**
+	 * @see Process#getOutputStream()
+	 */
+	private static final int FLAG_HAS_STDOUT = 1 << 1;
+	/**
+	 * @see Process#getErrorStream()
+	 */
+	private static final int FLAG_HAS_STDERR = 1 << 2;
+
 	@Override
 	public SakerProcess start() throws IOException {
 		List<String> cmd = this.command;
@@ -49,6 +62,7 @@ public class JavaSakerProcessBuilder extends SakerProcessBuilderBase {
 			pbenv.clear();
 			pbenv.putAll(env);
 		}
+		int flags = 0;
 		if (stdoutconsumer == null) {
 			//set process builder stdout redirection to NULL
 			pb.redirectOutput(NULL_FILE);
@@ -58,6 +72,7 @@ public class JavaSakerProcessBuilder extends SakerProcessBuilderBase {
 			stdoutconsumer = null;
 		} else {
 			//default to Redirect.PIPE
+			flags |= FLAG_HAS_STDIN;
 		}
 		if (mergestderr) {
 			pb.redirectErrorStream(true);
@@ -69,10 +84,15 @@ public class JavaSakerProcessBuilder extends SakerProcessBuilderBase {
 			stderrconsumer = null;
 		} else {
 			//default to Redirect.PIPE
+			flags |= FLAG_HAS_STDERR;
 		}
 
 		if (standardInputPipe) {
 			//this is the default.
+
+			//TODO don't redirect to the null file when standard in support is added
+//			flags |= FLAG_HAS_STDOUT;
+			pb.redirectInput(NULL_FILE);
 		} else if (standardInputFile != null) {
 			pb.redirectInput(LocalFileProvider.toRealPath(standardInputFile).toFile());
 		} else {
@@ -81,7 +101,7 @@ public class JavaSakerProcessBuilder extends SakerProcessBuilderBase {
 		}
 
 		Process proc = pb.start();
-		return new JavaSakerProcess(proc, stdoutconsumer, stderrconsumer);
+		return new JavaSakerProcess(proc, stdoutconsumer, stderrconsumer, flags);
 	}
 
 	private static final class JavaSakerProcess implements SakerProcess {
@@ -89,11 +109,14 @@ public class JavaSakerProcessBuilder extends SakerProcessBuilderBase {
 		private final ProcessIOConsumer standardOutputConsumer;
 		private final ProcessIOConsumer standardErrorConsumer;
 
+		private final int flags;
+
 		private JavaSakerProcess(Process proc, ProcessIOConsumer standardOutputConsumer,
-				ProcessIOConsumer standardErrorConsumer) {
+				ProcessIOConsumer standardErrorConsumer, int flags) {
 			this.proc = proc;
 			this.standardOutputConsumer = standardOutputConsumer;
 			this.standardErrorConsumer = standardErrorConsumer;
+			this.flags = flags;
 		}
 
 		@Override
@@ -120,8 +143,10 @@ public class JavaSakerProcessBuilder extends SakerProcessBuilderBase {
 		public void processIO() throws IllegalStateException, IOException {
 			//synchronize, only a single client can process the IO at once
 			synchronized (this) {
-				InputStream stderrstream = proc.getErrorStream();
-				InputStream stdoutstream = proc.getInputStream();
+				//we null out the streams based on the flags as the get*Stream() methods return a non-null, but noop stream
+				InputStream stderrstream = ((flags & FLAG_HAS_STDERR) == FLAG_HAS_STDERR) ? proc.getErrorStream()
+						: null;
+				InputStream stdoutstream = ((flags & FLAG_HAS_STDIN) == FLAG_HAS_STDIN) ? proc.getInputStream() : null;
 				if (stderrstream == null) {
 					//the standard error is redirected
 					//if the standard output is redirected as well, the copyStreamToConsumers returns immediately

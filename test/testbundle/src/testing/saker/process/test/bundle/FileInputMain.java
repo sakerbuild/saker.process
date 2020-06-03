@@ -6,6 +6,7 @@ import java.nio.file.Paths;
 import java.util.Arrays;
 
 import saker.build.file.path.SakerPath;
+import saker.process.api.CollectingProcessIOConsumer;
 import saker.process.api.SakerProcess;
 import saker.process.api.SakerProcessBuilder;
 
@@ -28,7 +29,7 @@ public class FileInputMain {
 				throw new AssertionError(exitcode);
 			}
 			byte[] expectedbytes = Files.readAllBytes(Paths.get(args[1]));
-			if (!Arrays.equals(expectedbytes, outcollector.getOutputBytes())) {
+			if (!Arrays.equals(expectedbytes, outcollector.getByteArray())) {
 				throw new AssertionError("Content mismatch: " + new String(expectedbytes, StandardCharsets.UTF_8)
 						+ " and " + outcollector.getOutputString());
 			}

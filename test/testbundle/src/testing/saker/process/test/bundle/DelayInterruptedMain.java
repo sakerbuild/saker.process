@@ -3,6 +3,7 @@ package testing.saker.process.test.bundle;
 import java.io.InterruptedIOException;
 import java.util.Arrays;
 
+import saker.process.api.CollectingProcessIOConsumer;
 import saker.process.api.SakerProcess;
 import saker.process.api.SakerProcessBuilder;
 

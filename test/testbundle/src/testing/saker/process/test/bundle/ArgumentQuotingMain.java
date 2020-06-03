@@ -5,6 +5,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 
+import saker.process.api.CollectingProcessIOConsumer;
 import saker.process.api.SakerProcess;
 import saker.process.api.SakerProcessBuilder;
 

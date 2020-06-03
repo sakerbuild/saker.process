@@ -12,7 +12,7 @@ import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.process.api.args.ProcessInitializationContext;
 import saker.process.api.args.ProcessInvocationArgument;
 import saker.sdk.support.api.SDKPathReference;
-import saker.sdk.support.api.SDKReference;
+import saker.sdk.support.api.SDKSupportUtils;
 
 public class SDKPathProcessInvocationArgument implements ProcessInvocationArgument, Externalizable {
 	private static final long serialVersionUID = 1L;
@@ -32,15 +32,7 @@ public class SDKPathProcessInvocationArgument implements ProcessInvocationArgume
 
 	@Override
 	public List<String> getArguments(ProcessInitializationContext argcontext) throws Exception {
-		SDKReference sdk = argcontext.getSDKs().get(pathReference.getSDKName());
-		if (sdk == null) {
-			throw new IllegalArgumentException("SDK not found with name: " + pathReference.getSDKName()
-					+ " for process invocation argument: " + this);
-		}
-		SakerPath path = pathReference.getPath(sdk);
-		if (path == null) {
-			throw new IllegalArgumentException("SDK path not found for reference: " + pathReference);
-		}
+		SakerPath path = SDKSupportUtils.getSDKPathReferencePath(pathReference, argcontext.getSDKs());
 		return ImmutableUtils.singletonList(path.toString());
 	}
 

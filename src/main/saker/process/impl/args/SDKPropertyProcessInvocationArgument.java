@@ -5,14 +5,13 @@ import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.util.List;
-import java.util.NavigableMap;
 import java.util.Objects;
 
 import saker.build.thirdparty.saker.util.ImmutableUtils;
 import saker.process.api.args.ProcessInitializationContext;
 import saker.process.api.args.ProcessInvocationArgument;
 import saker.sdk.support.api.SDKPropertyReference;
-import saker.sdk.support.api.SDKReference;
+import saker.sdk.support.api.SDKSupportUtils;
 
 public class SDKPropertyProcessInvocationArgument implements ProcessInvocationArgument, Externalizable {
 	private static final long serialVersionUID = 1L;
@@ -32,17 +31,7 @@ public class SDKPropertyProcessInvocationArgument implements ProcessInvocationAr
 
 	@Override
 	public List<String> getArguments(ProcessInitializationContext argcontext) throws Exception {
-		NavigableMap<String, SDKReference> sdks = argcontext.getSDKs();
-		String sdkname = propertyReference.getSDKName();
-		SDKReference sdk = sdks.get(sdkname);
-		if (sdk == null) {
-			throw new IllegalArgumentException(
-					"SDK not found with name: " + sdkname + " for process invocation argument: " + this);
-		}
-		String prop = propertyReference.getProperty(sdk);
-		if (prop == null) {
-			throw new IllegalArgumentException("SDK property not found for reference: " + propertyReference);
-		}
+		String prop = SDKSupportUtils.getSDKPropertyReferenceProperty(propertyReference, argcontext.getSDKs());
 		return ImmutableUtils.singletonList(prop);
 	}
 
