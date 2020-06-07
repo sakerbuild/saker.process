@@ -1,4 +1,4 @@
-global(VERSION_saker.process) = "0.8.0"
+global(VERSION_saker.process) = "0.8.1"
 global(DEPENDENCIES_saker.process) = [
 	saker.sdk.support,
 	saker.standard,
@@ -33,6 +33,7 @@ compile(
 		],
 		Identifier: saker.process,
 		GenerateNativeHeaders: true,
+		Parameters: [--release, 8]
 	)
 	$procdllpaths = include(platform_compile_win, javac: $javac)[procdllpaths]
 }
