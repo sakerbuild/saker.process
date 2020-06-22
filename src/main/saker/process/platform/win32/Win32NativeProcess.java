@@ -2,6 +2,7 @@ package saker.process.platform.win32;
 
 import java.io.IOException;
 import java.io.InterruptedIOException;
+import java.lang.annotation.Native;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.SelectionKey;
@@ -18,7 +19,8 @@ import saker.process.platform.NativeProcess;
 import saker.process.platform.NativeProcessIOConsumer;
 
 public class Win32NativeProcess extends NativeProcess {
-	private static final int DEFAULT_IO_PROCESSING_DIRECT_BUFFER_SIZE = 1024 * 8;
+	@Native
+	private static final int DEFAULT_IO_PROCESSING_DIRECT_BUFFER_SIZE = 1024 * 16;
 
 	private static final AtomicIntegerFieldUpdater<Win32NativeProcess> AIFU_processingFlag = AtomicIntegerFieldUpdater
 			.newUpdater(Win32NativeProcess.class, "processingFlag");

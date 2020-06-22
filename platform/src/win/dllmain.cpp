@@ -264,8 +264,8 @@ static HANDLE createNamedPipeWithName(const char* pipename, LPSECURITY_ATTRIBUTE
 			PIPE_ACCESS_INBOUND | FILE_FLAG_FIRST_PIPE_INSTANCE | FILE_FLAG_OVERLAPPED,
 			PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
 			1,
-			16 * 1024,
-			16 * 1024,
+			Java_const_saker_process_platform_win32_Win32NativeProcess_DEFAULT_IO_PROCESSING_DIRECT_BUFFER_SIZE,
+			Java_const_saker_process_platform_win32_Win32NativeProcess_DEFAULT_IO_PROCESSING_DIRECT_BUFFER_SIZE,
 			INFINITE,
 			lpSecurityAttributes
 		);
@@ -674,16 +674,38 @@ struct PipeHandler {
 		}
 		BOOL success = ReadFile(pipein, bufaddress, bufcapacity, NULL, &overlapped);
 		if (!success) {
-			//completing asynchronously
 			DWORD lasterror = GetLastError();
 			if (lasterror != ERROR_IO_PENDING) {
 				return false;
 			}
+			//completing asynchronously
 		}
 		ioState = IO_STATE_PENDING;
 		return true;
 	}
 	
+	bool performSynchronousRead(LPDWORD lpNumberOfBytesTransferred) {
+		if (ioState == IO_STATE_PENDING) {
+			return getOverlappedIOResult(lpNumberOfBytesTransferred, TRUE);
+		}
+		if (ioState == IO_STATE_CANCELLED) {
+			SetLastError(ERROR_OPERATION_ABORTED);
+			return false;
+		}
+		BOOL success = ReadFile(pipein, bufaddress, bufcapacity, lpNumberOfBytesTransferred, &overlapped);
+		if (success) {
+			//the number of bytes are written to the buffer
+			return true;
+		}
+		DWORD lasterror = GetLastError();
+		if (lasterror != ERROR_IO_PENDING) {
+			//some other error
+			return false;
+		}
+		//completing asynchronously
+		return getOverlappedIOResult(lpNumberOfBytesTransferred, TRUE);
+	}
+
 	bool isIOPending() const {
 		return ioState != IO_STATE_NONE;
 	}
@@ -711,8 +733,9 @@ struct PipeHandler {
 	
 	BOOL getOverlappedIOResult(LPDWORD lpNumberOfBytesTransferred, BOOL bWait){
 		if (ioState == IO_STATE_NONE) {
-			SetLastError(ERROR_INVALID_HANDLE);
-			return FALSE;
+			lpNumberOfBytesTransferred = 0;
+			SetLastError(ERROR_SUCCESS);
+			return TRUE;
 		}
 		if (GetOverlappedResult(pipein, &overlapped, lpNumberOfBytesTransferred, bWait)) {
 			ioState = IO_STATE_NONE;
@@ -842,6 +865,18 @@ JNIEXPORT void JNICALL Java_saker_process_platform_win32_Win32NativeProcess_nati
 				//process finished
 				
 				for (int i = 0; i < pipecount; ++i) {
+					//perform a non-waiting overlapped result retrieval before finishing the pipes
+					PipeHandler& pipe = pipes[i];
+					DWORD read = 0;
+					BOOL overlappedres = pipe.getOverlappedIOResult(&read, FALSE);
+					if (read > 0 && pipe.processor != NULL){
+						env->CallStaticVoidMethod(clazz, outputnotifymethod, pipe.bytebuffer, read, pipe.processor);
+						if (env->ExceptionCheck()) {
+							return;
+						}
+					}
+				}
+				for (int i = 0; i < pipecount; ++i) {
 					PipeHandler& pipe = pipes[i];
 					pipe.processFinished();
 				}
@@ -858,25 +893,33 @@ JNIEXPORT void JNICALL Java_saker_process_platform_win32_Win32NativeProcess_nati
 					}
 					if(!overlappedres) {
 						DWORD lasterror = GetLastError();
-						if (lasterror != ERROR_BROKEN_PIPE && lasterror != ERROR_PIPE_NOT_CONNECTED){
+						if (lasterror != ERROR_BROKEN_PIPE && lasterror != ERROR_PIPE_NOT_CONNECTED && lasterror != ERROR_OPERATION_ABORTED) {
 							failure(env, "GetOverlappedResult", lasterror);
 							return;
 						}
 					}
-					if (read > 0 && pipe.processor != NULL) {
-						//read the remaining data
-						while (true) {
-							if (!ReadFile(pipe.pipein, pipe.bufaddress, pipe.bufcapacity, &read, NULL)) {
-								break;
-							}
-							if (read <= 0){
-								break;
-							}
-
-							env->CallStaticVoidMethod(clazz, outputnotifymethod, pipe.bytebuffer, read, pipe.processor);
-							if (env->ExceptionCheck()) {
+					if (read <= 0 || pipe.processor == NULL) {
+						continue;
+					}
+					//read the remaining data
+					while (true) {
+						read = 0;
+						BOOL readres = pipe.performSynchronousRead(&read);
+						if (!readres) {
+							DWORD lasterror = GetLastError();
+							if (lasterror != ERROR_BROKEN_PIPE && lasterror != ERROR_PIPE_NOT_CONNECTED && lasterror != ERROR_OPERATION_ABORTED) {
+								failure(env, "GetOverlappedResult", lasterror);
 								return;
 							}
+							break;
+						}
+						if (read <= 0){
+							break;
+						}
+
+						env->CallStaticVoidMethod(clazz, outputnotifymethod, pipe.bytebuffer, read, pipe.processor);
+						if (env->ExceptionCheck()) {
+							return;
 						}
 					}
 				}
